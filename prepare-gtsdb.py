@@ -8,7 +8,6 @@ import os
 
 
 
-verbose = False
 
 def make_dir(dir: str) -> None:
     if not os.path.exists(dir):
@@ -17,9 +16,13 @@ def make_dir(dir: str) -> None:
 # don't know what does this thing do for now
 def xyxy_to_xyhx(x:List[int], w=1360, h=800) -> List[float]:
     y =  np.copy(x)
+    # x cneter 
     y[0] = ((x[0] + x[2]) / 2) / w
+    # y center
     y[1] = ((x[1] + x[3]) / 2) / h
+    # width
     y[2] = (x[2] - x[0]) / w
+    # hight
     y[3] = (x[3] - x[1]) / h
     return y
 
@@ -74,14 +77,14 @@ def get_train_test_split(x, test_size:float, random_state:int=42):
     l = x.shape[0]
     indexes_list = [i for i in range(l)]
     np.random.shuffle(indexes_list)
-    split_index = int(np.floor(test_size * (1 - l)))
+    split_index = int(np.floor((1 - test_size) * l))
     train_indexes = indexes_list[:split_index]
     test_indexes = indexes_list[split_index:]
     return x[train_indexes], x[test_indexes]
     
     
         
-def prepaere_split(images, dataroot:str,split_name:str) ->None:
+def prepare_split(images, dataroot:str,split_name:str) ->None:
     images_root = os.path.join(dataroot, split_name, 'images')
     labels_root = os.path.join(dataroot, split_name, 'labels')
     make_dir(images_root)
@@ -109,5 +112,8 @@ def prepare():
     full_imglist.sort()
     full_imglist = np.asarray(full_imglist)
     train, test = get_train_test_split(full_imglist, 0.3)
-    prepaere_split(train, dataroot, 'train')
-    prepaere_split(test, dataroot, 'validation')
+    test, validation = get_train_test_split(test, 0.5)
+
+    prepare_split(train, dataroot, 'train')
+    prepare_split(test, dataroot, 'test')
+    prepare_split(validation,dataroot ,'validation')
