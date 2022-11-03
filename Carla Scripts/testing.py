@@ -4,7 +4,7 @@
 # documented example, please take a look at tutorial.py.
 
 """
-Welcome to CARLA manual control.
+Welcome to CARLA control.
 
 Use ARROWS or WASD keys for control.
 
@@ -15,6 +15,7 @@ Use ARROWS or WASD keys for control.
     Space        : hand-brake
     P            : toggle autopilot
     M            : toggle manual transmission
+    Y            : toggle auto-speed limit
     ,/.          : gear up/down
     CTRL + W     : toggle constant velocity mode at 60 km/h
 
@@ -123,6 +124,7 @@ try:
     from pygame.locals import K_v
     from pygame.locals import K_w
     from pygame.locals import K_x
+    from pygame.locals import K_y
     from pygame.locals import K_z
     from pygame.locals import K_MINUS
     from pygame.locals import K_EQUALS
@@ -141,6 +143,7 @@ except ImportError:
 
 
 def find_weather_presets():
+    """Method to find weather presets"""
     rgx = re.compile('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)')
     name = lambda x: ' '.join(m.group(0) for m in rgx.finditer(x))
     presets = [x for x in dir(carla.WeatherParameters) if re.match('[A-Z].+', x)]
@@ -148,6 +151,7 @@ def find_weather_presets():
 
 
 def get_actor_display_name(actor, truncate=250):
+    """Method to get actor display name"""
     name = ' '.join(actor.type_id.replace('_', '.').title().split('.')[1:])
     return (name[:truncate - 1] + u'\u2026') if len(name) > truncate else name
 
@@ -182,6 +186,8 @@ def get_actor_blueprints(world, filter, generation):
 
 
 class World(object):
+    """ Class representing the surrounding environment """
+    
     def __init__(self, carla_world, hud, args):
         self.world = carla_world
         self.sync = args.sync
@@ -228,6 +234,7 @@ class World(object):
         ]
 
     def restart(self):
+        """Restart the world"""
         self.player_max_speed = 1.589
         self.player_max_speed_fast = 3.713
         # Keep same camera config if the camera manager exists.
@@ -284,6 +291,7 @@ class World(object):
             self.world.wait_for_tick()
 
     def next_weather(self, reverse=False):
+        """Get next weather setting"""
         self._weather_index += -1 if reverse else 1
         self._weather_index %= len(self._weather_presets)
         preset = self._weather_presets[self._weather_index]
@@ -322,18 +330,22 @@ class World(object):
             pass
 
     def tick(self, clock):
+        """Method for every tick"""
         self.hud.tick(self, clock)
 
     def render(self, display):
+        """Render world"""
         self.camera_manager.render(display)
         self.hud.render(display)
 
     def destroy_sensors(self):
+        """Destroy sensors"""
         self.camera_manager.sensor.destroy()
         self.camera_manager.sensor = None
         self.camera_manager.index = None
 
     def destroy(self):
+        """Destroys all actors"""
         if self.radar_sensor is not None:
             self.toggle_radar()
         sensors = [
@@ -374,6 +386,7 @@ class KeyboardControl(object):
         world.hud.notification("Press 'H' or '?' for help.", seconds=4.0)
 
     def parse_events(self, client, world, clock, sync_mode):
+        global isOverrideSpeed
         if isinstance(self._control, carla.VehicleControl):
             current_lights = self._lights
         for event in pygame.event.get():
@@ -407,6 +420,25 @@ class KeyboardControl(object):
                     world.next_weather(reverse=True)
                 elif event.key == K_c:
                     world.next_weather()
+                elif event.key == K_y:
+                    if (isOverrideSpeed):
+                        isOverrideSpeed = False
+                        world.player.disable_constant_velocity()
+                        world.constant_velocity_enabled = False
+                        world.hud.notification("Disabled Auto-Speed limit")
+                    else:
+                        if (self._autopilot_enabled):
+                             if world.constant_velocity_enabled:
+                                world.hud.notification("Can't enable Auto-Speed limit while Constant Speed is enabled")
+                             else:
+                                isOverrideSpeed = True
+                                # trying to set speed to 30 km/h
+                                SpeedOfOverride = 30/3.6
+                                world.player.enable_constant_velocity(carla.Vector3D(SpeedOfOverride, 0, 0))
+                                world.hud.notification("Auto-Speed: %.2f" %(SpeedOfOverride*3.6))
+                        else:
+                            world.hud.notification("Can't enable Auto-Speed limit while Auto-pilot is disabled")
+                                  
                 elif event.key == K_g:
                     world.toggle_radar()
                 elif event.key == K_BACKQUOTE:
@@ -494,8 +526,17 @@ class KeyboardControl(object):
                                   "experience some issues with the traffic simulation")
                         self._autopilot_enabled = not self._autopilot_enabled
                         world.player.set_autopilot(self._autopilot_enabled)
-                        world.hud.notification(
-                            'Autopilot %s' % ('On' if self._autopilot_enabled else 'Off'))
+                        if self._autopilot_enabled:
+                            world.hud.notification('Autopilot %s' % ('On'))
+                        else:
+                            if (isOverrideSpeed):
+                                isOverrideSpeed = False
+                                world.player.disable_constant_velocity()
+                                world.constant_velocity_enabled = False
+                                world.hud.notification("Autopilot Off and Disabled Auto-Speed limit")
+                            else:
+                                world.hud.notification('Autopilot %s' % ('Off'))
+
                     elif event.key == K_l and pygame.key.get_mods() & KMOD_CTRL:
                         current_lights ^= carla.VehicleLightState.Special1
                     elif event.key == K_l and pygame.key.get_mods() & KMOD_SHIFT:
@@ -627,9 +668,12 @@ class HUD(object):
         self._notifications.tick(world, clock)
         if not self._show_info:
             return
+            
         t = world.player.get_transform()
         v = world.player.get_velocity()
-        c = world.player.get_control()
+        v_magnitude = 3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2);
+        
+        c = world.player.get_control()  
         compass = world.imu_sensor.compass
         heading = 'N' if compass > 270.5 or compass < 89.5 else ''
         heading += 'S' if 90.5 < compass < 269.5 else ''
@@ -639,6 +683,7 @@ class HUD(object):
         collision = [colhist[x + self.frame - 200] for x in range(0, 200)]
         max_col = max(1.0, max(collision))
         collision = [x / max_col for x in collision]
+        speed_limits = world.world.get_actors().filter('traffic.speed_limit.*')
         vehicles = world.world.get_actors().filter('vehicle.*')
         self._info_text = [
             'Server:  % 16.0f FPS' % self.server_fps,
@@ -648,7 +693,7 @@ class HUD(object):
             'Map:     % 20s' % world.map.name.split('/')[-1],
             'Simulation time: % 12s' % datetime.timedelta(seconds=int(self.simulation_time)),
             '',
-            'Speed:   % 15.0f km/h' % (3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2)),
+            'Speed:   % 15.0f km/h' % (v_magnitude),
             u'Compass:% 17.0f\N{DEGREE SIGN} % 2s' % (compass, heading),
             'Accelero: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.accelerometer),
             'Gyroscop: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.gyroscope),
@@ -674,16 +719,32 @@ class HUD(object):
             'Collision:',
             collision,
             '',
-            'Number of vehicles: % 8d' % len(vehicles)]
+            'Number of Speed Signs: %d' % len(speed_limits)]
+            
+        if len(speed_limits) > 1:
+            self._info_text += ['Nearby Speed Signs:']
+            distance = lambda l: math.sqrt((l.x - t.location.x)**2 + (l.y - t.location.y)**2 + (l.z - t.location.z)**2)
+            speed_limits = [(distance(x.get_location()), x) for x in speed_limits if x.id != world.player.id]
+            no_printedSpeedlimit = 0
+            for d, speed_limit in sorted(speed_limits, key=lambda speed_limits: speed_limits[0]):
+                if d > 200.0 or no_printedSpeedlimit > 3:
+                    break
+                speed_limits_type = get_actor_display_name(speed_limit, truncate=22)+" Sign"
+                self._info_text.append('% 4dm %s' % (d, speed_limits_type))
+                no_printedSpeedlimit+=1
+        
+        self._info_text += ['Number of vehicles: %d' % len(vehicles)]
         if len(vehicles) > 1:
             self._info_text += ['Nearby vehicles:']
             distance = lambda l: math.sqrt((l.x - t.location.x)**2 + (l.y - t.location.y)**2 + (l.z - t.location.z)**2)
             vehicles = [(distance(x.get_location()), x) for x in vehicles if x.id != world.player.id]
+            no_printedVehicle = 0
             for d, vehicle in sorted(vehicles, key=lambda vehicles: vehicles[0]):
-                if d > 200.0:
+                if d > 200.0 or no_printedVehicle > 3:
                     break
                 vehicle_type = get_actor_display_name(vehicle, truncate=22)
                 self._info_text.append('% 4dm %s' % (d, vehicle_type))
+                no_printedVehicle+=1
 
     def toggle_info(self):
         self._show_info = not self._show_info
@@ -1202,6 +1263,7 @@ def game_loop(args):
             clock.tick_busy_loop(60)
             if controller.parse_events(client, world, clock, args.sync):
                 return
+            
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
@@ -1297,5 +1359,5 @@ def main():
 
 
 if __name__ == '__main__':
-
+    isOverrideSpeed = False
     main()
