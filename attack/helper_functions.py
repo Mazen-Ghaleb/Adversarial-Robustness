@@ -1,15 +1,12 @@
 import numpy as np
 import cv2
+from tqdm import tqdm
 
 def read_img(img_path):
     img = cv2.imread(img_path)
     return img
 
-def preprocess(img, input_size=[640, 640], swap=(2, 0, 1), pad=True):
-    if not pad:
-        resized =  cv2.resize(img, input_size)
-        resized = resized.transpose(swap)
-        return np.ascontiguousarray(resized, dtype=np.float32)
+def preprocess(img, input_size=[640, 640], swap=(2, 0, 1)):
     if len(img.shape) == 3:
         padded_img = np.ones(
             (input_size[0], input_size[1], 3), dtype=np.uint8) * 114
@@ -29,4 +26,12 @@ def preprocess(img, input_size=[640, 640], swap=(2, 0, 1), pad=True):
     padded_img = padded_img.transpose(swap)
     padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
 
-    return padded_img
+    return padded_img, r
+
+def load_preprocess_imgs(img_paths):
+    imgs = []
+    for i in tqdm(range(len(img_paths))):
+        img = read_img(img_paths[i])
+        preprocessed_img, r = preprocess(img)
+        imgs.append(preprocessed_img)
+    return imgs, r
