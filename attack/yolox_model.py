@@ -3,7 +3,7 @@ from onnx2torch import convert
 from pathlib import Path
 from typing import Union
 from torch import Tensor
-from torch.nn import  BCEWithLogitsLoss
+from torch.nn import  BCELoss
 import torch.nn.functional as Func
 
 
@@ -12,28 +12,28 @@ class YoloxModel(torch.nn.Module):
         self,
         onnx_path: Union[Path, str],
         input_size=[640, 640],
-        num_classes:int=10
+        num_classes:int=10,
+        obj_threshold:float = 0.3,
+        cls_threshold:float = 0.8
     ) -> None:
 
         super().__init__()
         self.model = convert(onnx_path)
-        self.cls_loss = BCEWithLogitsLoss(reduction="none")
+        self.cls_loss = BCELoss(reduction="none")
         self.input_size = input_size
         self.num_classes = num_classes
+        self.obj_threshold = obj_threshold
+        self.cls_threshold = cls_threshold
 
     def forward(self, x: Tensor, targets=None):
         outputs = self.model(x)
         if self.training:
             cls_pred = outputs[:, :, 5:]
-            objs_pred = outputs[:, :, 4].view(1, -1, 1)
+            objs_pred = outputs[:, :, 4]
             if targets is None:
-                max_cls = torch.argmax(cls_pred, 2)
-                max_objs = torch.argmax(objs_pred, 2)
-                cls_targets = Func.one_hot(
-                    max_cls, num_classes=self.num_classes).to(torch.float32)
-                objs_targets = Func.one_hot(
-                    max_objs, num_classes=1
-                ).to(torch.float32)
+                with torch.no_grad():
+                    objs_targets = (objs_pred > self.obj_threshold).float()
+                    cls_targets = (cls_pred > self.cls_threshold).float()
             loss = self.get_cls_loss(cls_pred,objs_pred,cls_targets, objs_targets)
             return loss
         else:
@@ -49,4 +49,3 @@ class YoloxModel(torch.nn.Module):
         objs_loss = self.cls_loss(objs_preds, objs_targets)
 
         return cls_loss.sum() + objs_loss.sum()
-
