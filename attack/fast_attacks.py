@@ -28,6 +28,7 @@ def it_fgsm(model:YoloxModel, img:np.ndarray, eps:int=4, cuda=False):
         imgs = imgs.cuda()
     imgs = Variable(imgs, requires_grad=True)
     iter = int(min(eps + 4, 1.25 * eps))
+
     for _ in range(iter):
         loss = model(imgs)
         loss.backward()
@@ -37,7 +38,3 @@ def it_fgsm(model:YoloxModel, img:np.ndarray, eps:int=4, cuda=False):
             imgs = torch.clip(imgs, 0, 255)
         imgs = Variable(imgs, requires_grad=True)
     return imgs[0].detach()
-
-
-
-

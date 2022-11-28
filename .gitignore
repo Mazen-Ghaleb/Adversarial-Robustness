@@ -1,3 +1,5 @@
 datasets
 **/carlaPath.py
 **/__pycache__
+**/.ipynb_checkpoints
+**/test_imgs
