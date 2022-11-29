@@ -1,10 +1,7 @@
-import cv2
 import numpy as np
-from yolox_model import YoloxModel
+from .yolox_model import YoloxModel
 from torch.autograd import Variable
 import torch
-from helper_functions import preprocess
-from itertools import product
 
 def fgsm(model:YoloxModel,img:np.ndarray, eps:float, cuda=False):
 
