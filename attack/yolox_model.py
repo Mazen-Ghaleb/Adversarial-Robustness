@@ -19,7 +19,7 @@ class YoloxModel(torch.nn.Module):
 
         super().__init__()
         self.model = convert(onnx_path)
-        self.cls_loss = BCELoss(reduction="none")
+        self.bce_loss = BCELoss(reduction="none")
         self.input_size = input_size
         self.num_classes = num_classes
         self.obj_threshold = obj_threshold
@@ -45,7 +45,11 @@ class YoloxModel(torch.nn.Module):
             objs_preds: Tensor,
             cls_targets: Tensor,
             objs_targets: Tensor):
-        cls_loss = self.cls_loss(cls_preds, cls_targets)
-        objs_loss = self.cls_loss(objs_preds, objs_targets)
+        cls_loss = self.bce_loss(cls_preds, cls_targets)
+        objs_loss = self.bce_loss(objs_preds, objs_targets)
 
         return cls_loss.sum() + objs_loss.sum()
+
+    def set_thresholds(self, obj_thresholds, cls_thersholds):
+        self.obj_threshold = obj_thresholds
+        self.cls_threshold = cls_thersholds
