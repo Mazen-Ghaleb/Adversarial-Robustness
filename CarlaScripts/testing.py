@@ -4,9 +4,7 @@
 # documented example, please take a look at tutorial.py.
 
 """
-Welcome to CARLA control.
-
-Use ARROWS or WASD keys for control.
+Use ARROWS or WASD keys for control
 
     W            : throttle
     S            : brake
@@ -15,36 +13,35 @@ Use ARROWS or WASD keys for control.
     Space        : hand-brake
     P            : toggle autopilot
     M            : toggle manual transmission
-    Y            : toggle auto-speed limit
     ,/.          : gear up/down
     CTRL + W     : toggle constant velocity mode at 60 km/h
-
     L            : toggle next light type
     SHIFT + L    : toggle high beam
     Z/X          : toggle right/left blinker
     I            : toggle interior light
-
     TAB          : change sensor position
     ` or N       : next sensor
     [1-9]        : change to sensor [1-9]
     G            : toggle radar visualization
     C            : change weather (Shift+C reverse)
     Backspace    : change vehicle
-
     V            : Select next map layer (Shift+V reverse)
     B            : Load current selected map layer (Shift+B to unload)
-
     R            : toggle recording images to disk
     T            : toggle vehicle's telemetry
-
     CTRL + R     : toggle recording of simulation (replacing any previous)
     CTRL + P     : start replaying last recorded simulation
     CTRL + +     : increments the start time of the replay by 1 second (+SHIFT = 10 seconds)
     CTRL + -     : decrements the start time of the replay by 1 second (+SHIFT = 10 seconds)
-
     F1           : toggle HUD
     H/?          : toggle help
     ESC          : quit
+
+Model controls
+    Y            : toggle auto-speed limit
+    U            : toggle Speed-limit Sign detection
+    E            : toggle Attack Sign detection model
+    O            : to save current view of Speed-limit Sign detection
 """
 
 from __future__ import print_function
@@ -58,8 +55,13 @@ from __future__ import print_function
 import glob
 import os
 import sys
-from Inference import detect_sign
+from Inference import OnnxModel
 from carlaPath import carlaPath
+from timeit import default_timer as timer   
+sys.path.append(os.getcwd() + '/../attack')
+from fast_attacks import fgsm, it_fgsm
+from yolox_model import YoloxModel
+import torch
 
 try:
     sys.path.append(glob.glob(carlaPath+'/PythonAPI/carla/dist/carla-*%d.%d-%s.egg' % (
@@ -79,6 +81,8 @@ import carla
 
 from carla import ColorConverter as cc
 
+import matplotlib.image
+import cv2
 import argparse
 import collections
 import datetime
@@ -87,6 +91,7 @@ import math
 import random
 import re
 import weakref
+
 
 try:
     import pygame
@@ -111,18 +116,21 @@ try:
     from pygame.locals import K_b
     from pygame.locals import K_c
     from pygame.locals import K_d
+    from pygame.locals import K_e
     from pygame.locals import K_g
     from pygame.locals import K_h
     from pygame.locals import K_i
     from pygame.locals import K_l
     from pygame.locals import K_m
     from pygame.locals import K_n
+    from pygame.locals import K_o
     from pygame.locals import K_p
     from pygame.locals import K_q
     from pygame.locals import K_r
     from pygame.locals import K_s
     from pygame.locals import K_t
     from pygame.locals import K_v
+    from pygame.locals import K_u
     from pygame.locals import K_w
     from pygame.locals import K_x
     from pygame.locals import K_y
@@ -144,6 +152,7 @@ except ImportError:
 # -- Global functions ----------------------------------------------------------
 # ==============================================================================
 
+
 def to_bgr_array(image):
     """Convert a CARLA raw image to a BGR numpy array."""
     array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
@@ -151,14 +160,46 @@ def to_bgr_array(image):
     array = array[:, :, :3]
     return array
 
-
-def calculateModel(image, world):
+def calculate_model(image, world):
     image = to_bgr_array(image)
-    world.model_result = detect_sign(image, "./yolox_s.onnx")
-    # matplotlib.image.imsave('name.png', cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    if world.modelPicture_flag:
+        matplotlib.image.imsave(
+            '../out/test.png', cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        world.hud.notification(
+            "Saved current view of Speed-limit Sign detection")
+        world.modelPicture_flag = False
+
+    start = timer()
+    preprocessed_img = world.model.preprocess(image)
+    world.model_result = world.model.detect_sign(preprocessed_img)
+
     if world.model_result is not None:
+        print("Classification Model time:", timer()-start)
         world.model_speed = world.model_result[0]
         world.model_confidence = world.model_result[1]
+
+    if(world.attack_model_flag):
+        start = timer()
+        perturbed_image = fgsm(world.attack_model, preprocessed_img, eps=4, cuda=world.cuda_available)
+        world.attack_model_result = world.model.detect_sign(perturbed_image)
+        print("Attack Model time:", timer()-start)
+    
+        if world.attack_model_result is not None:
+            world.attack_model_speed = world.attack_model_result[0]
+            world.attack_model_confidence = world.attack_model_result[1]
+
+
+def toggle_model(flag, world):  # True to activate model and False to stop model
+    if (flag):
+        world.vehicle_camera.listen(
+            lambda image: calculate_model(image, world))
+    else:
+        world.vehicle_camera.stop()
+        world.model_result = None
+    world.model_flag = flag
+
+def toggle_attack_model(flag, world):  # True to activate attack model and False to stop attack model
+    world.attack_model_flag = flag
 
 
 def find_weather_presets():
@@ -255,9 +296,23 @@ class World(object):
             carla.MapLayer.Walls,
             carla.MapLayer.All
         ]
+        self.model_flag = False
+        self.attack_model_flag = False
+        self.modelPicture_flag = False
+
+        self.model = None
+        self.attack_model = None
+        self.model_path = None
+        self.cuda_available = False
+
         self.model_result = None
         self.model_speed = None
         self.model_confidence = None
+
+        self.attack_model_result = None
+        self.attack_model_speed = None
+        self.attack_model_confidence = None
+
         self.vehicle_camera = None
         self.isOverrideSpeed = False
 
@@ -309,6 +364,10 @@ class World(object):
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.modify_vehicle_physics(self.player)
         # Set up the sensors.
+        camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
+        camera_init_trans = carla.Transform(carla.Location(x=0, z=4))
+        self.vehicle_camera = self.world.spawn_actor(
+            camera_bp, camera_init_trans, attach_to=self.player)
         self.collision_sensor = CollisionSensor(self.player, self.hud)
         self.lane_invasion_sensor = LaneInvasionSensor(self.player, self.hud)
         self.gnss_sensor = GnssSensor(self.player)
@@ -460,8 +519,6 @@ class KeyboardControl(object):
                         world.player.disable_constant_velocity()
                         world.constant_velocity_enabled = False
                         world.hud.notification("Disabled Auto-Speed limit")
-                        world.model_result = None
-                        world.vehicle_camera.stop()
                     else:
                         if (self._autopilot_enabled):
                             if world.constant_velocity_enabled:
@@ -469,22 +526,54 @@ class KeyboardControl(object):
                                     "Can't enable Auto-Speed limit while Constant Speed is enabled")
                             else:
                                 world.isOverrideSpeed = True
-                                world.vehicle_camera.listen(
-                                    lambda image: calculateModel(image, world))
+                                # Activates model if not activated
+                                if (not world.model_flag):
+                                    toggle_model(True, world)
+                                    world.hud.notification(
+                                        "Auto-Speed limit enabled and Speed-limit Sign detection enabled")
+                                else:
+                                    world.hud.notification(
+                                        "Auto-Speed limit enabled")
 
                                 if (world.model_speed):
                                     SpeedOfOverride = world.model_speed/3.6
                                 else:
                                     # trying to set speed to 30 km/h
                                     SpeedOfOverride = 30/3.6
+
                                 world.player.enable_constant_velocity(
                                     carla.Vector3D(SpeedOfOverride, 0, 0))
-                                world.hud.notification(
-                                    "Auto-Speed limit enabled")
+
                         else:
                             world.hud.notification(
                                 "Can't enable Auto-Speed limit while Auto-pilot is disabled")
-
+                elif event.key == K_u:
+                    if (world.model_flag):
+                        toggle_model(False, world)
+                        toggle_attack_model(False,world)
+                        world.hud.notification(
+                            "Speed-limit Sign detection disabled")
+                    else:
+                        toggle_model(True, world)
+                        world.hud.notification(
+                            "Speed-limit Sign detection enabled")
+                elif event.key == K_e:
+                    if (world.model_flag):
+                        if (world.attack_model_flag):
+                            toggle_attack_model(False, world)
+                            world.hud.notification("Attack Sign detection disabled")
+                        else:
+                            toggle_attack_model(True, world)
+                            world.hud.notification("Attack Sign detection enabled")
+                    else:
+                        world.hud.notification(
+                            "Can't enable Attack Sign detection while Sign detection is disabled")
+                elif event.key == K_o:
+                    if (world.model_flag):
+                        world.modelPicture_flag = True
+                    else:
+                        world.hud.notification(
+                            "Speed-limit Sign detection is not enabled")
                 elif event.key == K_g:
                     world.toggle_radar()
                 elif event.key == K_BACKQUOTE:
@@ -796,7 +885,7 @@ class HUD(object):
                             for x in speed_limits if x.id != world.player.id]
             no_printedSpeedlimit = 0
             for d, speed_limit in sorted(speed_limits, key=lambda speed_limits: speed_limits[0]):
-                if d > 200.0 or no_printedSpeedlimit > 3:
+                if d > 200.0 or no_printedSpeedlimit > 1:
                     break
                 speed_limits_type = get_actor_display_name(
                     speed_limit, truncate=22)+" Sign"
@@ -812,18 +901,27 @@ class HUD(object):
                         for x in vehicles if x.id != world.player.id]
             no_printedVehicle = 0
             for d, vehicle in sorted(vehicles, key=lambda vehicles: vehicles[0]):
-                if d > 200.0 or no_printedVehicle > 3:
+                if d > 200.0 or no_printedVehicle > 1:
                     break
                 vehicle_type = get_actor_display_name(vehicle, truncate=22)
                 self._info_text.append('% 4dm %s' % (d, vehicle_type))
                 no_printedVehicle += 1
 
-        if (world.model_speed is not None):
-            self._info_text += ['Model Speed: %d' % world.model_speed]
+        if (world.model_flag):
+            if (world.model_speed is not None):
+                self._info_text += ['Model Speed: %d'% world.model_speed]
 
-        if (world.model_confidence is not None):
-            self._info_text += ['Model Confidence: %f' %
-                                world.model_confidence]
+            if (world.model_confidence is not None):
+                self._info_text += ['Model Confidence: %.3f'%
+                                    world.model_confidence]
+
+        if (world.attack_model_flag):
+            if (world.attack_model_speed is not None):
+                self._info_text += ['Attacked Speed: %d'% world.attack_model_speed]
+
+            if (world.attack_model_confidence is not None):
+                self._info_text += ['Attacked Confidence: %.3f'%
+                                    world.attack_model_confidence]
 
     def toggle_info(self):
         self._show_info = not self._show_info
@@ -1356,14 +1454,33 @@ def game_loop(args):
             print("WARNING: You are currently in asynchronous mode and could "
                   "experience some issues with the traffic simulation")
 
-        display = pygame.display.set_mode(
-            (args.width, args.height),
-            pygame.HWSURFACE | pygame.DOUBLEBUF)
+        if (args.fullscreen):
+            display = pygame.display.set_mode((1920, 1080), pygame.FULLSCREEN)
+            args.width = 1920
+            args.height = 1080
+        else:
+            display = pygame.display.set_mode(
+                (args.width, args.height),
+                pygame.HWSURFACE | pygame.DOUBLEBUF)
         display.fill((0, 0, 0))
         pygame.display.flip()
 
         hud = HUD(args.width, args.height)
         world = World(sim_world, hud, args)
+        
+        if (world.model_path is None):
+            world.model_path = "./yolox_s.onnx"
+
+        if (world.model is None):
+            world.model = OnnxModel(world.model_path)
+
+        if (world.attack_model is None):
+            world.attack_model = YoloxModel(world.model_path, obj_threshold=0.8, cls_threshold=0.6)
+            world.cuda_available = torch.cuda.is_available()
+            if world.cuda_available:
+                print("CUDA WORKS")
+                world.attack_model = world.attack_model.cuda()
+
         controller = KeyboardControl(world, args.autopilot)
 
         if args.sync:
@@ -1381,7 +1498,7 @@ def game_loop(args):
         while True:
             if args.sync:
                 sim_world.tick()
-            clock.tick_busy_loop(60)
+            clock.tick_busy_loop(30)
             if controller.parse_events(client, world, clock, args.sync):
                 return
 
@@ -1460,6 +1577,10 @@ def main():
         '--sync',
         action='store_true',
         help='Activate synchronous mode execution')
+    argparser.add_argument(
+        '--fullscreen',
+        action='store_true',
+        help='Activate fullscreen mode')
     args = argparser.parse_args()
 
     args.width, args.height = [int(x) for x in args.res.split('x')]

@@ -5,7 +5,7 @@ from typing import Union
 from torch import Tensor
 from torch.nn import  BCELoss
 import torch.nn.functional as Func
-
+import onnx
 
 class YoloxModel(torch.nn.Module):
     def __init__(
@@ -18,7 +18,8 @@ class YoloxModel(torch.nn.Module):
     ) -> None:
 
         super().__init__()
-        self.model = convert(onnx_path)
+        temp = onnx.load_model(onnx_path)
+        self.model = convert(temp)
         self.bce_loss = BCELoss(reduction="none")
         self.input_size = input_size
         self.num_classes = num_classes

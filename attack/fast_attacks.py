@@ -1,5 +1,5 @@
 import numpy as np
-from .yolox_model import YoloxModel
+from yolox_model import YoloxModel
 from torch.autograd import Variable
 import torch
 
@@ -16,7 +16,10 @@ def fgsm(model:YoloxModel,img:np.ndarray, eps:float, cuda=False):
     with torch.no_grad():
         perturbed_imgs = (imgs + (grad.sign() * eps))
         perturbed_imgs = torch.clip(perturbed_imgs, 0, 255)
-    return perturbed_imgs[0]
+    if cuda:
+        return perturbed_imgs[0].cpu().numpy()
+    else:
+        return perturbed_imgs[0].numpy()
 
 def it_fgsm(model:YoloxModel, img:np.ndarray, eps:int=4, cuda=False):
     imgs = np.asarray([img])
@@ -34,4 +37,7 @@ def it_fgsm(model:YoloxModel, img:np.ndarray, eps:int=4, cuda=False):
             imgs = (imgs + (grad.sign()))
             imgs = torch.clip(imgs, 0, 255)
         imgs = Variable(imgs, requires_grad=True)
-    return imgs[0].detach()
+    if cuda:
+        return imgs[0].detach().cpu().numpy()
+    else:
+        return imgs[0].detach().numpy()
