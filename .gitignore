@@ -1,6 +1,11 @@
-datasets
+# CARLA Environment Path 
 **/carlaPath.py
-**/__pycache__
+
+# Python 
+__pycache__
+
+# Jupyter Notebook
 **/.ipynb_checkpoints
+
+# Test Images
 **/test_imgs
-**/out

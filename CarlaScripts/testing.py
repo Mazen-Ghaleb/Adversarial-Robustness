@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
-# Allows controlling a vehicle with a keyboard. For a simpler and more
-# documented example, please take a look at tutorial.py.
+# Copyright (c) 2023 Mazen Mostafa Ghaleb, Mostafa Lotfy Mostafa, Safia Medhat Abdulaziz, Youssef Maher Nader
+#
+# This work is licensed under the terms of the MIT license.
+# For a copy, see https://opensource.org/licenses/MIT.
 
 """
 Use ARROWS or WASD keys for control
@@ -40,7 +42,8 @@ Use ARROWS or WASD keys for control
 Model controls
     Y            : toggle auto-speed limit
     U            : toggle Speed-limit Sign detection
-    E            : toggle Attack Sign detection model
+    E            : toggle Attack Sign detection method
+    F            : switch Attack Sign detection method
     O            : to save current view of Speed-limit Sign detection
 """
 
@@ -92,7 +95,6 @@ import random
 import re
 import weakref
 
-
 try:
     import pygame
     from pygame.locals import KMOD_CTRL
@@ -117,6 +119,7 @@ try:
     from pygame.locals import K_c
     from pygame.locals import K_d
     from pygame.locals import K_e
+    from pygame.locals import K_f
     from pygame.locals import K_g
     from pygame.locals import K_h
     from pygame.locals import K_i
@@ -160,34 +163,57 @@ def to_bgr_array(image):
     array = array[:, :, :3]
     return array
 
-def calculate_model(image, world):
-    image = to_bgr_array(image)
-    if world.modelPicture_flag:
-        matplotlib.image.imsave(
-            '../out/test.png', cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-        world.hud.notification(
-            "Saved current view of Speed-limit Sign detection")
-        world.modelPicture_flag = False
-
-    start = timer()
-    preprocessed_img = world.model.preprocess(image)
+def calculate_classification(world, preprocessed_img):
+    detection_start = timer()
     world.model_result = world.model.detect_sign(preprocessed_img)
 
     if world.model_result is not None:
-        print("Classification Model time:", timer()-start)
         world.model_speed = world.model_result[0]
         world.model_confidence = world.model_result[1]
+        print("{:<25}".format("Classification Model time"),": {:.3f}".format(timer()-detection_start),
+        "Label:{:<3} Confidence:{:.3f}".format(int(world.model_speed), world.model_confidence))
+    else:
+        world.model_speed = None
+        world.model_confidence = None
+        print("{:<25}".format("Classification Model time"),": {:.3f} No Sign Detected".format(timer()-detection_start))
 
-    if(world.attack_model_flag):
-        start = timer()
-        perturbed_image = fgsm(world.attack_model, preprocessed_img, eps=4, cuda=world.cuda_available)
-        world.attack_model_result = world.model.detect_sign(perturbed_image)
-        print("Attack Model time:", timer()-start)
+def calculate_attack(world, preprocessed_img):
+    attack_start = timer()
+    perturbed_image = world.attack_methods[world.attack_currentMethodIndex][0](world.attack_model, preprocessed_img, eps=4, cuda=world.cuda_available)
+    world.attack_model_result = world.model.detect_sign(perturbed_image)
     
-        if world.attack_model_result is not None:
-            world.attack_model_speed = world.attack_model_result[0]
-            world.attack_model_confidence = world.attack_model_result[1]
+    if world.attack_model_result is not None:
+        world.attack_model_speed = world.attack_model_result[0]
+        world.attack_model_confidence = world.attack_model_result[1]
+        print("{:<25}".format("{} Attack Model time".format(world.attack_methods[world.attack_currentMethodIndex][1])),
+        ": {:.3f}".format(timer()-attack_start),
+        "Label:{:<3} Confidence:{:.3f}".format(int(world.attack_model_speed), world.attack_model_confidence))
+    else:
+        world.attack_model_speed = None
+        world.attack_model_confidence = None
+        print("{:<25}".format("{} Attack Model time".format(world.attack_methods[world.attack_currentMethodIndex][1])),
+        ": {:.3f} No Sign Detected".format(timer()-attack_start))
 
+def calculate_model(image, world):
+    total_start = timer()
+    if (world.model_currentTick == 0):  # Performs the calculation every world.model_tickRate ticks
+        image = to_bgr_array(image)
+        if world.modelPicture_flag:
+            matplotlib.image.imsave(
+                '../out/test.png', cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+            world.hud.notification(
+                "Saved current view of Speed-limit Sign detection")
+            world.modelPicture_flag = False
+        preprocessed_img = world.model.preprocess(image)
+
+        calculate_classification(world, preprocessed_img)
+        if world.attack_model_flag:
+            calculate_attack(world, preprocessed_img)
+
+        print("{:<25}".format("Total Model time"),": {:.3f}".format(timer()-total_start))
+
+    world.model_currentTick = (world.model_currentTick+1) %world.model_tickRate
+    
 
 def toggle_model(flag, world):  # True to activate model and False to stop model
     if (flag):
@@ -296,6 +322,10 @@ class World(object):
             carla.MapLayer.Walls,
             carla.MapLayer.All
         ]
+
+        self.model_currentTick = 0
+        self.model_tickRate = 20
+
         self.model_flag = False
         self.attack_model_flag = False
         self.modelPicture_flag = False
@@ -308,6 +338,9 @@ class World(object):
         self.model_result = None
         self.model_speed = None
         self.model_confidence = None
+
+        self.attack_methods = []
+        self.attack_currentMethodIndex = 0
 
         self.attack_model_result = None
         self.attack_model_speed = None
@@ -561,13 +594,16 @@ class KeyboardControl(object):
                     if (world.model_flag):
                         if (world.attack_model_flag):
                             toggle_attack_model(False, world)
-                            world.hud.notification("Attack Sign detection disabled")
+                            world.hud.notification("{} Attack Sign detection disabled".format(world.attack_methods[world.attack_currentMethodIndex][1]))
                         else:
                             toggle_attack_model(True, world)
-                            world.hud.notification("Attack Sign detection enabled")
+                            world.hud.notification("{} Attack Sign detection enabled".format(world.attack_methods[world.attack_currentMethodIndex][1]))
                     else:
                         world.hud.notification(
                             "Can't enable Attack Sign detection while Sign detection is disabled")
+                elif event.key == K_f:
+                    world.attack_currentMethodIndex = (world.attack_currentMethodIndex+1) % len(world.attack_methods)
+                    world.hud.notification("Changed Attack method to {}".format(world.attack_methods[world.attack_currentMethodIndex][1]))
                 elif event.key == K_o:
                     if (world.model_flag):
                         world.modelPicture_flag = True
@@ -893,6 +929,7 @@ class HUD(object):
                 no_printedSpeedlimit += 1
 
         self._info_text += ['Number of vehicles: %d' % len(vehicles)]
+
         if len(vehicles) > 1:
             self._info_text += ['Nearby vehicles:']
             def distance(l): return math.sqrt((l.x - t.location.x) **
@@ -1436,9 +1473,11 @@ def game_loop(args):
 
     try:
         client = carla.Client(args.host, args.port)
-        client.set_timeout(20.0)
+        client.set_timeout(30.0)
 
-        sim_world = client.get_world()
+        #sim_world = client.get_world()
+        sim_world = client.load_world('Town01_Opt')
+
         if args.sync:
             original_settings = sim_world.get_settings()
             settings = sim_world.get_settings()
@@ -1467,19 +1506,31 @@ def game_loop(args):
 
         hud = HUD(args.width, args.height)
         world = World(sim_world, hud, args)
-        
+        for sign in world.world.get_actors().filter('traffic.speed_limit.90'):
+            sign.destroy()
+
         if (world.model_path is None):
             world.model_path = "./yolox_s.onnx"
 
         if (world.model is None):
             world.model = OnnxModel(world.model_path)
+            # Initial cache of function
+            temp_cache_img = world.model.preprocess(cv2.imread("../out/sample.png"))
+            temp_cache = world.model.detect_sign(temp_cache_img)
 
         if (world.attack_model is None):
             world.attack_model = YoloxModel(world.model_path, obj_threshold=0.8, cls_threshold=0.6)
             world.cuda_available = torch.cuda.is_available()
             if world.cuda_available:
-                print("CUDA WORKS")
+                print("CUDA IS WORKING")
                 world.attack_model = world.attack_model.cuda()
+            else:
+                print("CUDA ISNT WORKING")
+            # Initial cache of function
+            world.attack_methods.append((fgsm,"FGSM"))
+            world.attack_methods.append((it_fgsm,"IT-FGSM"))
+            temp_cache = fgsm(world.attack_model, temp_cache_img, eps=4, cuda=world.cuda_available)
+            #temp_cache = it_fgsm(world.attack_model, temp_cache_img, eps=4, cuda=world.cuda_available)
 
         controller = KeyboardControl(world, args.autopilot)
 
