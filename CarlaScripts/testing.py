@@ -170,12 +170,12 @@ def calculate_classification(world, preprocessed_img):
     if world.model_result is not None:
         world.model_speed = world.model_result[0]
         world.model_confidence = world.model_result[1]
-        print("{:<25}".format("Classification Model time"),": {:.3f}".format(timer()-detection_start),
+        print("{:<25}".format("Classification Model time"),": {:.3f}s".format(timer()-detection_start),
         "Label:{:<3} Confidence:{:.3f}".format(int(world.model_speed), world.model_confidence))
     else:
         world.model_speed = None
         world.model_confidence = None
-        print("{:<25}".format("Classification Model time"),": {:.3f} No Sign Detected".format(timer()-detection_start))
+        print("{:<25}".format("Classification Model time"),": {:.3f}s No Sign Detected".format(timer()-detection_start))
 
 def calculate_attack(world, preprocessed_img):
     attack_start = timer()
@@ -186,13 +186,24 @@ def calculate_attack(world, preprocessed_img):
         world.attack_model_speed = world.attack_model_result[0]
         world.attack_model_confidence = world.attack_model_result[1]
         print("{:<25}".format("{} Attack Model time".format(world.attack_methods[world.attack_currentMethodIndex][1])),
-        ": {:.3f}".format(timer()-attack_start),
+        ": {:.3f}s".format(timer()-attack_start),
         "Label:{:<3} Confidence:{:.3f}".format(int(world.attack_model_speed), world.attack_model_confidence))
     else:
         world.attack_model_speed = None
         world.attack_model_confidence = None
         print("{:<25}".format("{} Attack Model time".format(world.attack_methods[world.attack_currentMethodIndex][1])),
-        ": {:.3f} No Sign Detected".format(timer()-attack_start))
+        ": {:.3f}s No Sign Detected".format(timer()-attack_start))
+
+def calculate_overrideSpeed(world, detectedSpeed):
+    if world.isOverrideSpeed:
+        if detectedSpeed:
+            # Over 3.6 to convert it from km/h to m/s because constant velocity takes it in m/s
+            print("{:<25}".format("Overriding the speed with"),": {:.3f} km/h".format(detectedSpeed))
+            SpeedOfOverride = detectedSpeed /3.6
+        # else:
+        #     SpeedOfOverride = 30 /3.6 
+            world.player.enable_constant_velocity(carla.Vector3D(SpeedOfOverride, 0, 0))
+
 
 def calculate_model(image, world):
     total_start = timer()
@@ -209,8 +220,12 @@ def calculate_model(image, world):
         calculate_classification(world, preprocessed_img)
         if world.attack_model_flag:
             calculate_attack(world, preprocessed_img)
+            calculate_overrideSpeed(world, world.attack_model_speed)
+        else:
+            calculate_overrideSpeed(world, world.model_speed)
+       
 
-        print("{:<25}".format("Total Model time"),": {:.3f}".format(timer()-total_start))
+        print("{:<25}".format("Total Model time"),": {:.3f}s".format(timer()-total_start))
 
     world.model_currentTick = (world.model_currentTick+1) %world.model_tickRate
     
@@ -567,16 +582,6 @@ class KeyboardControl(object):
                                 else:
                                     world.hud.notification(
                                         "Auto-Speed limit enabled")
-
-                                if (world.model_speed):
-                                    SpeedOfOverride = world.model_speed/3.6
-                                else:
-                                    # trying to set speed to 30 km/h
-                                    SpeedOfOverride = 30/3.6
-
-                                world.player.enable_constant_velocity(
-                                    carla.Vector3D(SpeedOfOverride, 0, 0))
-
                         else:
                             world.hud.notification(
                                 "Can't enable Auto-Speed limit while Auto-pilot is disabled")
