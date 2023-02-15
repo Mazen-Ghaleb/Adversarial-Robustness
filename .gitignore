@@ -9,3 +9,12 @@ __pycache__
 
 # Test Images
 **/test_imgs
+
+# pycharm and vscode stuff
+.idea
+.vscode
+
+#data  and model
+model/datasets/**
+model/YOLOX
+model/*.pth
