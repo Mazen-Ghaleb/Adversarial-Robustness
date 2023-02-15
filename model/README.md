@@ -24,7 +24,7 @@ To start training do the following
 
 1. Write an exp class simmilar to speedlimit_exp.py 
 2. Download the pretrained weights for <a href="https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_s.pth">yolox-s</a>
-3. and then run the following command
+3. Run the following command
 
 ```bash
 python3 YOLOX/tools/train.py -f speedlimit_exp.py -d 1 -b 64 --fp16 -o -c yolox_s.pth --cache
@@ -33,5 +33,9 @@ python3 YOLOX/tools/train.py -f speedlimit_exp.py -d 1 -b 64 --fp16 -o -c yolox_
 for more ifno about training check <a href="https://github.com/Megvii-BaseDetection/YOLOX/blob/main/docs/train_custom_data.md">Training on custom data</a>
 
 # Model Evaluation
+1. Write an exp class simmilar to speedlimit_exp.py 
+2. Run the following command
 
-todo 
+```bash
+python3 YOLOX/tools/eval.py -f speedlimit_exp.py -c best_ckpt.pth -b 64 -d 1 --conf 0.1 --test --fp16 --fuse 
+```

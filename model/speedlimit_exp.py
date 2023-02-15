@@ -12,6 +12,7 @@ class Exp(MyExp):
         self.data_dir = "datasets/tsinghua_gtsdb_speedlimit"
         self.train_ann = "train2017.json"
         self.val_ann = "val2017.json"
+        self.test_ann = "test2017.json"
 
         self.num_classes = 10
 

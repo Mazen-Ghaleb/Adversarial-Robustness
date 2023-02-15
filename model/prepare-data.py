@@ -217,6 +217,7 @@ def shuffle_and_split(data, data_path="datasets/tsinghua_gtsdb_full",
     imgs = data['images']
 
     # Shuffle the list of images
+    random.seed(42)
     random.shuffle(imgs)
 
     # Create a mapping from image ID to index
@@ -233,6 +234,17 @@ def shuffle_and_split(data, data_path="datasets/tsinghua_gtsdb_full",
         if image_id not in image_id_to_annotations:
             image_id_to_annotations[image_id] = []
         image_id_to_annotations[image_id].append(annotation)
+
+
+    # uncomment this part if you need only the first 100 image for testing purposes 
+    # Select the first 100 images
+    # imgs = imgs[:100]
+
+    # Get the corresponding annotations for the selected images
+    # selected_annotations = []
+    # for image in imgs:
+    #     selected_annotations.extend(image_id_to_annotations[image['id']])
+    # annotations = selected_annotations
 
     # Determine the partition sizes
     num_images = len(imgs)
@@ -251,7 +263,7 @@ def shuffle_and_split(data, data_path="datasets/tsinghua_gtsdb_full",
     except:
         pass
     os.makedirs(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'train2017'), exist_ok=True)
-    os.makedirs(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'test'), exist_ok=True)
+    os.makedirs(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'test2017'), exist_ok=True)
     os.makedirs(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'val2017'), exist_ok=True)
     os.makedirs(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'annotations'), exist_ok=True)
 
@@ -264,7 +276,7 @@ def shuffle_and_split(data, data_path="datasets/tsinghua_gtsdb_full",
     for image in track(test_images):
         test_annotations.extend(image_id_to_annotations[image['id']])
         src_path = os.path.join(data_path, image['file_name'])
-        dest_path = os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit', 'test', image['file_name'])
+        dest_path = os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit', 'test2017', image['file_name'])
         shutil.copy2(src_path, dest_path)
 
     print('copying validation images')
@@ -292,7 +304,7 @@ def shuffle_and_split(data, data_path="datasets/tsinghua_gtsdb_full",
     result_validation['annotations'] = val_annotations
 
     # Save the partitioned data
-    with open(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit','annotations','test.json'), 'w') as f:
+    with open(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit','annotations','test2017.json'), 'w') as f:
         json.dump(result_test, f)
     with open(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'annotations','val2017.json'), 'w') as f:
         json.dump(result_validation, f)
