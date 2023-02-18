@@ -171,5 +171,5 @@ class OnnxModel:
             #     print(float(CLASSES[cls_ind]))
             # else:
             #     print(-1.0)
-            return float(self.classes[cls_ind]), score
+            return float(self.classes[cls_ind]), score, final_boxes
         return None

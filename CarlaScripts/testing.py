@@ -45,6 +45,8 @@ Model controls
     E            : toggle Attack Sign detection method
     F            : switch Attack Sign detection method
     O            : to save current view of Speed-limit Sign detection
+    J            : to save classified view of Speed-limit Sign detection
+
 """
 
 from __future__ import print_function
@@ -123,6 +125,7 @@ try:
     from pygame.locals import K_g
     from pygame.locals import K_h
     from pygame.locals import K_i
+    from pygame.locals import K_j
     from pygame.locals import K_l
     from pygame.locals import K_m
     from pygame.locals import K_n
@@ -163,13 +166,27 @@ def to_bgr_array(image):
     array = array[:, :, :3]
     return array
 
-def calculate_classification(world, preprocessed_img):
+def drawBoundingBox(boxes, image, classification, confidence, color =(0, 255, 0), font = cv2.FONT_HERSHEY_SIMPLEX, thickness = 2):
+    for box in boxes:
+        detected_image = cv2.rectangle(image, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), color, thickness)
+        detected_image = cv2.putText(detected_image, "{}: {:.2f} %".format(int(classification), confidence*100), 
+        (int(box[0]), int(box[1] - 5)), font, 0.6, color, 1)
+    return detected_image
+
+def calculate_classification(world, preprocessed_img, image):
     detection_start = timer()
     world.model_result = world.model.detect_sign(preprocessed_img)
 
     if world.model_result is not None:
         world.model_speed = world.model_result[0]
         world.model_confidence = world.model_result[1]
+        
+        if world.modelClassificationPicture_flag:
+            detected_img = drawBoundingBox(world.model_result[2], image, world.model_result[0], world.model_result[1])
+            matplotlib.image.imsave('../out/bounding_test.png', detected_img)
+            world.hud.notification("Saved classified view of Speed-limit Sign detection")
+            world.modelClassificationPicture_flag = False
+
         print("{:<25}".format("Classification Model time"),": {:.3f}s".format(timer()-detection_start),
         "Label:{:<3} Confidence:{:.3f}".format(int(world.model_speed), world.model_confidence))
     else:
@@ -209,15 +226,15 @@ def calculate_model(image, world):
     total_start = timer()
     if (world.model_currentTick == 0):  # Performs the calculation every world.model_tickRate ticks
         image = to_bgr_array(image)
-        if world.modelPicture_flag:
-            matplotlib.image.imsave(
-                '../out/test.png', cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-            world.hud.notification(
-                "Saved current view of Speed-limit Sign detection")
-            world.modelPicture_flag = False
         preprocessed_img = world.model.preprocess(image)
+        
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        if world.modelPicture_flag:
+            matplotlib.image.imsave('../out/test.png', image)
+            world.hud.notification("Saved current view of Speed-limit Sign detection")
+            world.modelPicture_flag = False
 
-        calculate_classification(world, preprocessed_img)
+        calculate_classification(world, preprocessed_img, image)
         if world.attack_model_flag:
             calculate_attack(world, preprocessed_img)
             calculate_overrideSpeed(world, world.attack_model_speed)
@@ -344,6 +361,7 @@ class World(object):
         self.model_flag = False
         self.attack_model_flag = False
         self.modelPicture_flag = False
+        self.modelClassificationPicture_flag = False
 
         self.model = None
         self.attack_model = None
@@ -612,6 +630,12 @@ class KeyboardControl(object):
                 elif event.key == K_o:
                     if (world.model_flag):
                         world.modelPicture_flag = True
+                    else:
+                        world.hud.notification(
+                            "Speed-limit Sign detection is not enabled")
+                elif event.key == K_j:
+                    if (world.model_flag):
+                        world.modelClassificationPicture_flag = True
                     else:
                         world.hud.notification(
                             "Speed-limit Sign detection is not enabled")
