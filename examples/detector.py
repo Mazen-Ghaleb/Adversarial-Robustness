@@ -22,7 +22,7 @@ img = cv2.imread(os.path.join(test_imgs_path, "test.png"))
 img = detector.preprocess_model_input(img)
 
 imgs = np.asarray(img[None, :, :, :])
-outputs = detector.detect(imgs)
+outputs = detector.get_model_output(imgs)
 print(np.shape(outputs))
 # for one image only use 
 print(detector.decode_model_output(outputs[0]))

@@ -168,7 +168,7 @@ class SpeedLimitDetector:
         inputs = torch.from_numpy(imgs).to(self.device)
         self.model.eval()
         with torch.no_grad():
-            output = self.model(inputs).numpy()
+            output = self.model(inputs).cpu().numpy()
         return output
 
     def decode_model_output(self, model_output):
