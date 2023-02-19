@@ -1,10 +1,13 @@
 import torch
 import torch.nn as nn 
+from torch.autograd import Variable
 import torch.nn.functional as F
 from pycocotools.coco import COCO
 import torch.utils.data as data
 import os
 import cv2
+import torch.optim as optim
+import numpy as np
 
 """
     implementation for high-level representation guided denoiser from
@@ -144,8 +147,45 @@ class COCODataset(data.Dataset):
             img, ann = self.transofms(img, anns)
         return img, anns
 
+class ExperimentalLoss(nn.Module):
+    def __init__(self):
+        super(ExperimentalLoss,self).__init__()
+
+    def forward(self,denoised_output,bengin_output):
+        loss = torch.norm(torch.abs(denoised_output-bengin_output),p=1)
+        return loss
+
+class Preprocessor:    
+    def preprocess_model_input(self, img, input_size=[640, 640], swap=(2, 0, 1)):
+        if len(img.shape) == 3:
+            padded_img = np.ones(
+                (input_size[0], input_size[1], 3), dtype=np.uint8) * 114
+        else:
+            padded_img = np.ones(input_size, dtype=np.uint8) * 114
+
+        """TODO::
+        this gives correct bounding box  only for images with the same size 
+        if you want to use images with different size you must return the ratio for each image 
+        and pass it to the output decoder to get the correct box
+        """
+        self.ratio = min(input_size[0] / img.shape[0],
+                            input_size[1] / img.shape[1])
+        resized_img = cv2.resize(
+            img,
+            (int(img.shape[1] * self.ratio), int(img.shape[0] * self.ratio)),
+            interpolation=cv2.INTER_LINEAR,
+        ).astype(np.uint8)
+        padded_img[: int(img.shape[0] * self.ratio),
+                    : int(img.shape[1] * self.ratio)] = resized_img
+
+        padded_img = padded_img.transpose(swap)
+        padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
+
+        return padded_img
+
+
 class Trainer:
-    def __init__(self, model, train_loader, val_loader, optimzer, criterion) -> None:
+    def __init__(self, model, train_loader, val_loader, optimzer, criterion = ExperimentalLoss()) -> None:
         self.model = model
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model.to(self.device)
@@ -188,18 +228,21 @@ class Trainer:
             val_losses.append(epoch_val_loss)
             print(f"Epoch {epoch + 1}/{n_epochs}, "
                   f"Train Loss: {epoch_train_loss:.4f}, "
-                  f"Val Loss: {epoch_val_loss:.4f}, "
+                  f"Val Loss: {epoch_val_loss:.4f}, ")
         return train_losses, val_losses 
 
 
 
 
-
+    
 if __name__ == "__main__":
     from torchsummary import summary
     # hgd = HGD()
     # print(sum(p.numel() for p in hgd.parameters() if p.requires_grad))
+    
     model = HGD()
+    model.eval()
+    #model()
     
     from prettytable import PrettyTable
 
@@ -214,6 +257,9 @@ if __name__ == "__main__":
         print(table)
         print(f"Total Trainable Params: {total_params}")
         return total_params
-    
     count_parameters(model)
+    
+    # TODO: Do the loaders stuff
+    #trainer = Trainer(model,TEMP_TRAIN_LOADER,TEMP_VAL_LOADER,optim.Adam(model.parameters(),lr= 0.001))
+    
 
