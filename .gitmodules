@@ -1,0 +1,3 @@
+[submodule "model/YOLOX"]
+	path = model/YOLOX
+	url = https://github.com/MostafaXLotfy/YOLOX.git
