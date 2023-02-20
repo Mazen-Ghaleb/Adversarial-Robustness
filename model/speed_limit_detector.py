@@ -1,15 +1,9 @@
-import math
-from loguru import logger
-
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from .YOLOX import yolox_custom
 import cv2
-import argparse
 import numpy as np
-from glob import glob
 import os
+from typing import Union
 
 
 def get_model(device):
@@ -162,9 +156,9 @@ class SpeedLimitDetector:
 
         return outputs
 
-    def get_model_output(self, imgs):
+    def get_model_output(self, imgs:np.ndarray) -> np.ndarray:
         assert not isinstance(imgs, type(None)), 'No Images give'
-
+        assert not isinstance(imgs, type(np.ndarray)), f'The input must be of type {np.ndarray}'
         inputs = torch.from_numpy(imgs).to(self.device)
         self.model.eval()
         with torch.no_grad():

@@ -2,6 +2,7 @@ import os
 from yolox.exp import Exp as MyExp
 from custom_yolo_head import CustomYOLOHead
 import torch.nn as nn
+from custom_yolo import CustomYOLOX
 
 class Exp(MyExp):
     def __init__(self):
@@ -29,7 +30,7 @@ class Exp(MyExp):
         self.multiscale_range = 0
 
     def get_model(self):
-        from yolox.models import YOLOX, YOLOPAFPN, YOLOXHead
+        from yolox.models import YOLOPAFPN
 
         def init_yolo(M):
             for m in M.modules():
@@ -41,7 +42,7 @@ class Exp(MyExp):
             in_channels = [256, 512, 1024]
             backbone = YOLOPAFPN(self.depth, self.width, in_channels=in_channels, act=self.act)
             head = CustomYOLOHead(self.num_classes, self.width, in_channels=in_channels, act=self.act)
-            self.model = YOLOX(backbone, head)
+            self.model = CustomYOLOX(backbone, head)
 
         self.model.apply(init_yolo)
         self.model.head.initialize_biases(1e-2)

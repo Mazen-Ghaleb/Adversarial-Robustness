@@ -17,4 +17,4 @@ __pycache__
 #data  and model
 model/datasets/**
 # model/YOLOX
-# model/*.pth
+*.pth

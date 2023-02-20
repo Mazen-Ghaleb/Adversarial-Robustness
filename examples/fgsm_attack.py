@@ -1,52 +1,52 @@
-from carla.Inference import OnnxModel
-from attack import fgsm, YoloxModel, it_fgsm
+from model.speed_limit_detector import SpeedLimitDetector
+from attack import fgsm, it_fgsm
 import torch
 import cv2
+import numpy as np
+
+if torch.cuda.is_available():
+    print("Running on cuda")
+    device = torch.device('cuda')
+else:
+    print("Running on cpu")
+    device = torch.device('cpu')
 
 if __name__ == "__main__":
+
     # initialization of the model used for prediction should be done once
-    model_path = "../carla/yolox_s.onnx"
-    model = OnnxModel(model_path)
+    detector = SpeedLimitDetector(device)
 
-    # check if cuda is available
-    cuda_available = torch.cuda.is_available()
-
-    # initialization of the model used for attack
-    # should  be done once
-    # these thresholds are used for fgsm
-    attack_model = YoloxModel(model_path, obj_threshold=0.8, cls_threshold=0.6)
-
-    # check to use gpu
-    if cuda_available:
-        attack_model = attack_model.cuda()
 
     # load the image into memory
-    img_path = "../test_imgs/test.png"
+    img_path = "../test_imgs/test2.png"
     img = cv2.imread(img_path)
-
     # preprocess the image
-    preprocessed_img = model.preprocess(img)
+    preprocessed_img = detector.preprocess_model_input(img)
 
-    # the attack should be generated on the preprocessed image
+    preprocessed_imgs = np.asarray(preprocessed_img[None, :, :, :])
+    preprocessed_imgs = torch.from_numpy(preprocessed_imgs)
 
 
     # fgsm
-    # generated perturbed image
-    perturbed_image = fgsm(attack_model, preprocessed_img, eps=4, cuda=cuda_available).numpy()
-    print(perturbed_image.shape)
-    prediction = model.detect_sign(perturbed_image)
+    # generated perturbed images
+    perturbed_images = fgsm(detector.model, preprocessed_imgs, device,eps=4, return_numpy=True)
+
+    outputs = detector.get_model_output(perturbed_images)
+    prediction = detector.decode_model_output(outputs[0])
+
     print(f"fgsm results: ")
 
     print(f"prediction is :{prediction[0]}")
     print(f"confidence is :{prediction[1]}")
+    print(f"bounding box is :{prediction[2]}")
 
-    # it_fgsm
-    # use these values for it_fgsm
-    attack_model.set_thresholds(obj_thresholds=.9, cls_thersholds=0.6)
-    perturbed_image = it_fgsm(attack_model, preprocessed_img, cuda=cuda_available).numpy()
+    # # it_fgsm
+    perturbed_image = it_fgsm(detector.model, preprocessed_imgs, device, eps=4, return_numpy=True)
+    outputs = detector.get_model_output(perturbed_images)
+    prediction = detector.decode_model_output(outputs[0])
 
-    prediction = model.detect_sign(perturbed_image)
-    print(f"it_fgsm results: ")
+    print(f"it-fgsm results: ")
 
     print(f"prediction is :{prediction[0]}")
     print(f"confidence is :{prediction[1]}")
+    print(f"bounding box is :{prediction[2]}")
