@@ -1,0 +1,5 @@
+[project]
+name = "adversarial-robustness"
+version = "0.0.1"
+[tool.setuptools]
+py-modules = []
