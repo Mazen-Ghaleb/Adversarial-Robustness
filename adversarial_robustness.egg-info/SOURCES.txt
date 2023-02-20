@@ -12,8 +12,8 @@ attack/tuning.py
 attack/yolox_model.py
 defense/__init__.py
 defense/high_level_guided_denoiser.py
-defense/test.py
 model/__init__.py
+model/custom_yolo.py
 model/custom_yolo_head.py
 model/prepare-data.py
 model/speed_limit_detector.py

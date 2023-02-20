@@ -61,12 +61,10 @@ from __future__ import print_function
 import glob
 import os
 import sys
-from Inference import OnnxModel
+from model.speed_limit_detector import SpeedLimitDetector
 from carlaPath import carlaPath
 from timeit import default_timer as timer   
-sys.path.append(os.getcwd() + '/../attack')
-from fast_attacks import fgsm, it_fgsm
-from yolox_model import YoloxModel
+from attack.fast_attacks import fgsm, it_fgsm
 import torch
 
 try:
@@ -177,14 +175,13 @@ def drawBoundingBox(boxes, image, classification, confidence, color =(0, 255, 0)
 
 def calculate_classification(world, preprocessed_img, image):
     detection_start = timer()
-    world.model_result = world.model.detect_sign(preprocessed_img)
+    world.model_result = world.detector.detect_sign(preprocessed_img)
 
     if world.model_result is not None:
         world.model_speed = world.model_result[0]
         world.model_confidence = world.model_result[1]
         world.model_image = drawBoundingBox(world.model_result[2], image, world.model_result[0], world.model_result[1])
 
-        
         if world.modelClassificationPicture_flag:
             matplotlib.image.imsave('../out/bounding_test.png', world.model_image)
             world.hud.notification("Saved classified view of Speed-limit Sign detection")
@@ -200,8 +197,8 @@ def calculate_classification(world, preprocessed_img, image):
 
 def calculate_attack(world, preprocessed_img, image):
     attack_start = timer()
-    perturbed_image = world.attack_methods[world.attack_currentMethodIndex][0](world.attack_model, preprocessed_img, eps=4, cuda=world.cuda_available)
-    world.attack_model_result = world.model.detect_sign(perturbed_image)
+    perturbed_image = world.attack_methods[world.attack_currentMethodIndex][0](world.detector.model, preprocessed_img, world.device, 4, True, batch= False)
+    world.attack_model_result = world.detector.detect_sign(perturbed_image)
     
     if world.attack_model_result is not None:
         world.attack_model_speed = world.attack_model_result[0]
@@ -224,8 +221,6 @@ def calculate_overrideSpeed(world, detectedSpeed):
             # Over 3.6 to convert it from km/h to m/s because constant velocity takes it in m/s
             print("{:<25}".format("Overriding the speed with"),": {:.3f} km/h".format(detectedSpeed))
             SpeedOfOverride = detectedSpeed /3.6
-        # else:
-        #     SpeedOfOverride = 30 /3.6 
             world.player.enable_constant_velocity(carla.Vector3D(SpeedOfOverride, 0, 0))
 
 
@@ -233,7 +228,7 @@ def calculate_model(image, world):
     total_start = timer()
     if (world.model_currentTick == 0):  # Performs the calculation every world.model_tickRate ticks
         image = to_bgr_array(image)
-        preprocessed_img = world.model.preprocess(image)
+        preprocessed_img = world.detector.preprocess(image)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
         if world.modelPicture_flag:
@@ -372,9 +367,8 @@ class World(object):
         self.modelPicture_flag = False
         self.modelClassificationPicture_flag = False
 
-        self.model = None
-        self.attack_model = None
-        self.model_path = None
+        self.detector = None
+        self.device = None
         self.cuda_available = False
         
         self.model_result = None
@@ -537,7 +531,6 @@ class World(object):
                 sensor.destroy()
         if self.player is not None:
             self.player.destroy()
-
 
 # ==============================================================================
 # -- KeyboardControl -----------------------------------------------------------
@@ -1621,28 +1614,28 @@ def game_loop(args):
         for sign in world.world.get_actors().filter('traffic.speed_limit.90'):
             sign.destroy()
 
-        if (world.model_path is None):
-            world.model_path = "./yolox_s.onnx"
+        world.cuda_available = torch.cuda.is_available()
+        if world.cuda_available:
+            print("CUDA IS WORKING")
+            world.device = torch.device("cuda")
+        else:
+            world.device = torch.device("cpu")
+            print("CUDA ISNT WORKING")
+        
 
-        if (world.model is None):
-            world.model = OnnxModel(world.model_path)
+        if (world.detector is None):
+            world.detector = SpeedLimitDetector(world.device)
+            
             # Initial cache of function
-            temp_cache_img = world.model.preprocess(cv2.imread("../out/sample.png"))
-            temp_cache = world.model.detect_sign(temp_cache_img)
-
-        if (world.attack_model is None):
-            world.attack_model = YoloxModel(world.model_path, obj_threshold=0.8, cls_threshold=0.6)
-            world.cuda_available = torch.cuda.is_available()
-            if world.cuda_available:
-                print("CUDA IS WORKING")
-                world.attack_model = world.attack_model.cuda()
-            else:
-                print("CUDA ISNT WORKING")
+            temp_cache_img = world.detector.preprocess(cv2.imread("../out/sample.png"))
+            temp_cache = world.detector.detect_sign(temp_cache_img)
+            
             # Initial cache of function
             world.attack_methods.append((fgsm,"FGSM"))
             world.attack_methods.append((it_fgsm,"IT-FGSM"))
-            temp_cache = fgsm(world.attack_model, temp_cache_img, eps=4, cuda=world.cuda_available)
-            #temp_cache = it_fgsm(world.attack_model, temp_cache_img, eps=4, cuda=world.cuda_available)
+                        
+            temp_cache = fgsm(world.detector.model, temp_cache_img, world.device, 4, True, batch= False)
+            #temp_cache = it_fgsm(world.detector.model, temp_cache_img, world.device, 4, True, batch= False)
 
         controller = KeyboardControl(world, args.autopilot)
 

@@ -5,10 +5,14 @@ import torch.nn as nn
 import torch
 
 
-def fgsm(model:nn.Module,imgs:Tensor, device: torch.device, eps:int=4, return_numpy=False) -> None:
+def fgsm(model:nn.Module, model_input:Tensor, device: torch.device, eps:int=4, return_numpy=False, batch = True) -> None:
 
-    imgs = imgs.to(device)
-    imgs.requires_grad = True
+    if not batch:
+        model_input = np.asarray(model_input[None, :, :, :])
+        model_input = torch.from_numpy(model_input)
+
+    model_input = model_input.to(device)
+    model_input.requires_grad = True
     # imgs = Variable(imgs, requires_grad=True)
 
     ## this will stop the calculation for the graident with respect to input which is faster 
@@ -16,35 +20,49 @@ def fgsm(model:nn.Module,imgs:Tensor, device: torch.device, eps:int=4, return_nu
         param.requires_grad = False
 
     model.train()
-    loss = model(imgs)
+    loss = model(model_input)
     loss.backward()
-    grad = imgs.grad
+    grad = model_input.grad
     with torch.no_grad():
-        perturbed_imgs = (imgs + (grad.sign() * eps))
+        perturbed_imgs = (model_input + (grad.sign() * eps))
         perturbed_imgs = torch.clip(perturbed_imgs, 0, 255)
 
     if return_numpy:
+        if not batch:
+            return perturbed_imgs.detach().cpu().numpy()[0]
         return perturbed_imgs.detach().cpu().numpy()
     else:
+        if not batch:
+            return perturbed_imgs[0]
         return perturbed_imgs
 
 
-def it_fgsm(model:nn.Module, imgs:Tensor, device: torch.device,eps:int=4, return_numpy=False):
-    imgs = imgs.to(device)
-    imgs.requires_grad = True
+def it_fgsm(model:nn.Module, model_input:Tensor, device: torch.device,eps:int=4, return_numpy=False, batch = True):
+    
+    if not batch:
+        model_input = np.asarray(model_input[None, :, :, :])
+        model_input = torch.from_numpy(model_input)
+    
+    model_input = model_input.to(device)
+    model_input.requires_grad = True
 
     iter = int(min(eps + 4, 1.25 * eps))
 
     model.train()
     for _ in range(iter):
-        loss = model(imgs)
+        loss = model(model_input)
         loss.backward()
-        grad = imgs.grad
+        grad = model_input.grad
         with torch.no_grad():
-            imgs = (imgs + (grad.sign()))
-            imgs = torch.clip(imgs, 0, 255)
-        imgs.requires_grad = True
+            model_input = (model_input + (grad.sign()))
+            model_input = torch.clip(model_input, 0, 255)
+        model_input.requires_grad = True
+        
     if return_numpy:
-        return imgs.detach().cpu().numpy()
+        if not batch:
+            return model_input.detach().cpu().numpy()[0]
+        return model_input.detach().cpu().numpy()
     else:
-        return imgs
+        if not batch:
+            return model_input[0]
+        return model_input

@@ -19,7 +19,7 @@ detector = SpeedLimitDetector(device)
 test_imgs_path = os.path.join(os.path.dirname(__file__), "../test_imgs")
 test_imgs_path = os.path.relpath(test_imgs_path, os.getcwd())
 img = cv2.imread(os.path.join(test_imgs_path, "test.png"))
-img = detector.preprocess_model_input(img)
+img = detector.preprocess(img)
 
 imgs = np.asarray(img[None, :, :, :])
 outputs = detector.get_model_output(imgs)
