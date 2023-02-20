@@ -40,6 +40,7 @@ Use ARROWS or WASD keys for control
     ESC          : quit
 
 Model controls
+    F2           : toggle Bounding Box HUD
     Y            : toggle auto-speed limit
     U            : toggle Speed-limit Sign detection
     E            : toggle Attack Sign detection method
@@ -109,6 +110,7 @@ try:
     from pygame.locals import K_DOWN
     from pygame.locals import K_ESCAPE
     from pygame.locals import K_F1
+    from pygame.locals import K_F2
     from pygame.locals import K_LEFT
     from pygame.locals import K_PERIOD
     from pygame.locals import K_RIGHT
@@ -180,10 +182,11 @@ def calculate_classification(world, preprocessed_img, image):
     if world.model_result is not None:
         world.model_speed = world.model_result[0]
         world.model_confidence = world.model_result[1]
+        world.model_image = drawBoundingBox(world.model_result[2], image, world.model_result[0], world.model_result[1])
+
         
         if world.modelClassificationPicture_flag:
-            detected_img = drawBoundingBox(world.model_result[2], image, world.model_result[0], world.model_result[1])
-            matplotlib.image.imsave('../out/bounding_test.png', detected_img)
+            matplotlib.image.imsave('../out/bounding_test.png', world.model_image)
             world.hud.notification("Saved classified view of Speed-limit Sign detection")
             world.modelClassificationPicture_flag = False
 
@@ -192,9 +195,10 @@ def calculate_classification(world, preprocessed_img, image):
     else:
         world.model_speed = None
         world.model_confidence = None
+        world.model_image = np.zeros((640, 640, 3), dtype = np.uint8)
         print("{:<25}".format("Classification Model time"),": {:.3f}s No Sign Detected".format(timer()-detection_start))
 
-def calculate_attack(world, preprocessed_img):
+def calculate_attack(world, preprocessed_img, image):
     attack_start = timer()
     perturbed_image = world.attack_methods[world.attack_currentMethodIndex][0](world.attack_model, preprocessed_img, eps=4, cuda=world.cuda_available)
     world.attack_model_result = world.model.detect_sign(perturbed_image)
@@ -202,12 +206,15 @@ def calculate_attack(world, preprocessed_img):
     if world.attack_model_result is not None:
         world.attack_model_speed = world.attack_model_result[0]
         world.attack_model_confidence = world.attack_model_result[1]
+        world.attack_model_image = drawBoundingBox(world.attack_model_result[2], image, world.attack_model_result[0], world.attack_model_result[1])
+        
         print("{:<25}".format("{} Attack Model time".format(world.attack_methods[world.attack_currentMethodIndex][1])),
         ": {:.3f}s".format(timer()-attack_start),
         "Label:{:<3} Confidence:{:.3f}".format(int(world.attack_model_speed), world.attack_model_confidence))
     else:
         world.attack_model_speed = None
         world.attack_model_confidence = None
+        world.attack_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
         print("{:<25}".format("{} Attack Model time".format(world.attack_methods[world.attack_currentMethodIndex][1])),
         ": {:.3f}s No Sign Detected".format(timer()-attack_start))
 
@@ -227,16 +234,17 @@ def calculate_model(image, world):
     if (world.model_currentTick == 0):  # Performs the calculation every world.model_tickRate ticks
         image = to_bgr_array(image)
         preprocessed_img = world.model.preprocess(image)
-        
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
         if world.modelPicture_flag:
             matplotlib.image.imsave('../out/test.png', image)
             world.hud.notification("Saved current view of Speed-limit Sign detection")
             world.modelPicture_flag = False
 
-        calculate_classification(world, preprocessed_img, image)
+        calculate_classification(world, preprocessed_img, np.array(image, copy=True))
+        
         if world.attack_model_flag:
-            calculate_attack(world, preprocessed_img)
+            calculate_attack(world, preprocessed_img, np.array(image, copy=True))
             calculate_overrideSpeed(world, world.attack_model_speed)
         else:
             calculate_overrideSpeed(world, world.model_speed)
@@ -309,7 +317,7 @@ def get_actor_blueprints(world, filter, generation):
 class World(object):
     """ Class representing the surrounding environment """
 
-    def __init__(self, carla_world, hud, args):
+    def __init__(self, carla_world, hud, bbhud, args):
         self.world = carla_world
         self.sync = args.sync
         self.actor_role_name = args.rolename
@@ -322,6 +330,7 @@ class World(object):
                 '  Make sure it exists, has the same name of your town, and is correct.')
             sys.exit(1)
         self.hud = hud
+        self.bbhud = bbhud
         self.player = None
         self.collision_sensor = None
         self.lane_invasion_sensor = None
@@ -367,10 +376,11 @@ class World(object):
         self.attack_model = None
         self.model_path = None
         self.cuda_available = False
-
+        
         self.model_result = None
         self.model_speed = None
         self.model_confidence = None
+        self.model_image = np.zeros((640, 640, 3), dtype = np.uint8)
 
         self.attack_methods = []
         self.attack_currentMethodIndex = 0
@@ -378,6 +388,12 @@ class World(object):
         self.attack_model_result = None
         self.attack_model_speed = None
         self.attack_model_confidence = None
+        self.attack_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
+        
+        self.defense_model_result = None
+        self.defense_model_speed = None
+        self.defense_model_confidence = None
+        self.defense_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
 
         self.vehicle_camera = None
         self.isOverrideSpeed = False
@@ -491,11 +507,13 @@ class World(object):
     def tick(self, clock):
         """Method for every tick"""
         self.hud.tick(self, clock)
+        self.bbhud.tick(self)
 
     def render(self, display):
         """Render world"""
         self.camera_manager.render(display)
         self.hud.render(display)
+        self.bbhud.render(display)
 
     def destroy_sensors(self):
         """Destroy sensors"""
@@ -563,6 +581,8 @@ class KeyboardControl(object):
                         world.restart()
                 elif event.key == K_F1:
                     world.hud.toggle_info()
+                elif event.key == K_F2:
+                    world.bbhud.toggle_info()
                 elif event.key == K_v and pygame.key.get_mods() & KMOD_SHIFT:
                     world.next_map_layer(reverse=True)
                 elif event.key == K_v:
@@ -607,6 +627,7 @@ class KeyboardControl(object):
                     if (world.model_flag):
                         toggle_model(False, world)
                         toggle_attack_model(False,world)
+                        world.attack_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
                         world.hud.notification(
                             "Speed-limit Sign detection disabled")
                     else:
@@ -617,6 +638,7 @@ class KeyboardControl(object):
                     if (world.model_flag):
                         if (world.attack_model_flag):
                             toggle_attack_model(False, world)
+                            world.attack_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
                             world.hud.notification("{} Attack Sign detection disabled".format(world.attack_methods[world.attack_currentMethodIndex][1]))
                         else:
                             toggle_attack_model(True, world)
@@ -1045,6 +1067,66 @@ class HUD(object):
         self._notifications.render(display)
         self.help.render(display)
 
+# ==============================================================================
+# -- Bounding Box HUD -----------------------------------------------------------------------
+# ==============================================================================
+
+class BBHUD(object):
+    def __init__(self, width, height):
+        self.dim = (width, height)
+        font_name = 'courier' if os.name == 'nt' else 'mono'
+        fonts = [x for x in pygame.font.get_fonts() if font_name in x]
+        default_font = 'ubuntumono'
+        mono = default_font if default_font in fonts else fonts[0]
+        mono = pygame.font.match_font(mono)
+        self._font_mono = pygame.font.Font(mono, 12 if os.name == 'nt' else 14)
+        self._show_info = True
+        self._info_text = []
+
+    def tick(self, world):
+        if not self._show_info:
+            return
+
+        self._info_text = [
+            "{:<29}".format('Classification Bounding Box:'),
+            world.model_image,
+            '',
+            "{:<29}".format('Attack Bounding Box:'),
+            world.attack_model_image,
+            '',
+            "{:<29}".format('Defense Bounding Box:'),
+            world.defense_model_image
+        ]
+
+    def toggle_info(self):
+        self._show_info = not self._show_info
+
+    def render(self, display):
+        if self._show_info:
+            info_surface = pygame.Surface((220, self.dim[1]))
+            info_surface.set_alpha(100)
+            display.blit(info_surface, (self.dim[0] - info_surface.get_width(), 0))
+            v_offset = 4
+            h_offset = 100
+            for item in self._info_text:
+                if v_offset + 18 > self.dim[1]:
+                    break
+                if isinstance(item, np.ndarray):
+                    dim = (190, 190)
+                    resized = cv2.resize(item, dim)
+                    resized = np.swapaxes(resized, 0, 1)
+                    
+                    rect = pygame.Rect((0, 0), dim)
+                    display.blit(pygame.surfarray.make_surface(resized),
+                                 (display.get_width() - surface.get_width() - 8, v_offset), rect)
+                    v_offset += dim[1]
+                    item = None
+                    
+                if item:  # At this point has to be a str.
+                    surface = self._font_mono.render(
+                        item, True, (255, 255, 255))
+                    display.blit(surface, (display.get_width() - surface.get_width() - 8, v_offset))
+                v_offset += 18
 
 # ==============================================================================
 # -- FadingText ----------------------------------------------------------------
@@ -1534,7 +1616,8 @@ def game_loop(args):
         pygame.display.flip()
 
         hud = HUD(args.width, args.height)
-        world = World(sim_world, hud, args)
+        bbhud = BBHUD(args.width, args.height)
+        world = World(sim_world, hud, bbhud, args)
         for sign in world.world.get_actors().filter('traffic.speed_limit.90'):
             sign.destroy()
 
