@@ -6,6 +6,10 @@ from rich.progress import track
 import random
 import os
 import shutil
+from pycocotools.coco import COCO
+from collections import defaultdict
+import numpy as np
+import cv2
 
 total = None
 result_train = None
@@ -14,7 +18,7 @@ result_test = None
 
 
 def init_dic():
-    global result_train, result_validation, result_test, total
+    global  total
 
     total = {
         "info": {
@@ -37,8 +41,7 @@ def init_dic():
         "categories": []
     }
     categories = ["100", "120", "20",  "30",
-                  "40", "15", "50", "60", "70", "80"]
-    # 0 -> 100
+                  "40", "15", "50", "60", "70", "80"] # 0 -> 100
     # 1 -> 120
     # 2 -> 20
     # 3 -> 30
@@ -53,10 +56,6 @@ def init_dic():
             "name": category
         })
 
-    result_test = copy.deepcopy(total)
-    result_validation = copy.deepcopy(total)
-    result_train = copy.deepcopy(total)
-
 
 def load_txt(file_name, labels_to_keep):
     file = open(file_name, 'r')
@@ -70,8 +69,9 @@ def load_txt(file_name, labels_to_keep):
 
 
 def load_json(file_name):
-    file = open(file_name, 'r').read()
-    return json.loads(file)
+    with open(file_name, 'r') as file:
+        # file = open(file_name, 'r').read()
+        return json.load(file)
 
 
 def parse_gtsdb(data):
@@ -89,10 +89,10 @@ def parse_gtsdb(data):
     # 9 -> 80
     categories_dic = {"7": 0, "8": 1,
                       "0": 2,  "1": 3, "2": 6, "3": 7, "4": 8, "5": 9}
-    for annotation in track(data):
+    for annotation in track(data, "parsing gtsdb"):
         s = annotation.split(';')
         img_id = int(s[0][:5])
-        img_name = s[0][:] 
+        img_name = s[0][:]
         xmin = int(s[1])
         ymin = int(s[2])
         xmax = int(s[3])
@@ -113,10 +113,10 @@ def parse_gtsdb(data):
             "iscrowd": 0,
             "image_id": img_id,
             "bbox": [
-                xmin,
-                ymin,
-                xmax - xmin,
-                ymax - ymin
+                int(xmin),
+                int(ymin),
+                int(xmax - xmin),
+                int(ymax - ymin)
             ],
             "category_id": class_id,
             "id": anno_id
@@ -144,7 +144,7 @@ def parse_tsinghua(data):
 
     # Images and Annotations
 
-    for img in track(data['imgs']):
+    for img in track(data['imgs'], "parsing tsinghua"):
         flag = False
         for box in data['imgs'][img]['objects']:
             if box['category'] in categories:
@@ -187,7 +187,6 @@ def parse_tsinghua(data):
                             total['annotations'][-1]['segmentation'][0].append(
                                 xy[1])
 
-
     # with open('test.json', "w") as f:
     #     json.dump(result_test, f)
 """
@@ -217,15 +216,15 @@ def shuffle_and_split(data, data_path="datasets/tsinghua_gtsdb_full",
     imgs = data['images']
 
     # Shuffle the list of images
-    random.seed(42)
-    random.shuffle(imgs)
+    np.random.seed(42)
+    np.random.shuffle(imgs)
 
     # Create a mapping from image ID to index
-    image_id_to_index = {image['id'] : index for index, image in enumerate(imgs)}
+    image_id_to_index = {image['id']
+        : index for index, image in enumerate(imgs)}
 
     # Shuffle the annotations based on the shuffled images
     annotations.sort(key=lambda x: image_id_to_index[x['image_id']])
-
 
     # Create a mapping from image ID to annotations
     image_id_to_annotations = {}
@@ -235,8 +234,35 @@ def shuffle_and_split(data, data_path="datasets/tsinghua_gtsdb_full",
             image_id_to_annotations[image_id] = []
         image_id_to_annotations[image_id].append(annotation)
 
+    category_to_annotations = defaultdict(list)
+    for annotation in annotations:
+        category_to_annotations[annotation['category_id']].append(annotation)
 
-    # uncomment this part if you need only the first 100 image for testing purposes 
+    category_sizes = {category_id: len(
+        annotation) for category_id, annotation in category_to_annotations.items()}
+
+    category_train_sizes = {category_id: int(
+        size * train_size) for category_id, size in category_sizes.items()}
+    category_val_sizes = {category_id: int(
+        size * ((1 - train_size) / 2)) for category_id, size in category_sizes.items()}
+
+    test_annotations = []
+    val_annotations = []
+    train_annotations = []
+    for category_id, annotations in category_to_annotations.items():
+            random.shuffle(annotations)
+            train_annotations.extend(annotations[:category_train_sizes[category_id]])
+            val_annotations.extend(annotations[category_train_sizes[category_id]:category_train_sizes[category_id]+category_val_sizes[category_id]])
+            test_annotations.extend(annotations[category_train_sizes[category_id]+category_val_sizes[category_id]:])
+
+    # Get the corresponding images for the selected annotations
+    selected_image_ids = set(annotation['image_id'] for annotation in train_annotations + val_annotations + test_annotations)
+
+    selected_images = [image for image in imgs if image['id'] in selected_image_ids]
+
+
+
+    # uncomment this part if you need only the first 100 image for testing purposes
     # Select the first 100 images
     # imgs = imgs[:100]
 
@@ -246,70 +272,156 @@ def shuffle_and_split(data, data_path="datasets/tsinghua_gtsdb_full",
     #     selected_annotations.extend(image_id_to_annotations[image['id']])
     # annotations = selected_annotations
 
-    # Determine the partition sizes
-    num_images = len(imgs)
-    num_train = int(num_images * train_size)
-    num_val = int(num_images * ((1 - train_size) / 2))
-    num_test = num_images - num_train - num_val
+    image_id_to_index = {image['id']: image for  image in selected_images}
 
-    # Partition the images into test, train, and validation sets
-    train_images = imgs[:num_train]
-    test_images = imgs[num_train:num_train + num_test]
-    val_images = imgs[num_train + num_test:]
-
-    # Create the destination directories
     try:
-        shutil.rmtree(os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit'))
+        shutil.rmtree(os.path.join(data_root_path, "tsinghua_gtsdb_speedlimit"))
     except:
         pass
+    os.makedirs(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit'), exist_ok=True)
     os.makedirs(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'train2017'), exist_ok=True)
     os.makedirs(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'test2017'), exist_ok=True)
     os.makedirs(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'val2017'), exist_ok=True)
-    os.makedirs(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'annotations'), exist_ok=True)
-
-    # Partition the annotations into test, train, and validation sets
-    test_annotations = []
-    val_annotations = []
-    train_annotations = []
-
-    print('copying test images')
-    for image in track(test_images):
-        test_annotations.extend(image_id_to_annotations[image['id']])
-        src_path = os.path.join(data_path, image['file_name'])
-        dest_path = os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit', 'test2017', image['file_name'])
-        shutil.copy2(src_path, dest_path)
-
-    print('copying validation images')
-    for image in track(val_images):
-        val_annotations.extend(image_id_to_annotations[image['id']])
-        src_path = os.path.join(data_path, image['file_name'])
-        dest_path = os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit', 'val2017', image['file_name'])
-        shutil.copy2(src_path, dest_path)
-
-    print('copying train images')
-    for image in track(train_images):
-        train_annotations.extend(image_id_to_annotations[image['id']])
-        src_path = os.path.join(data_path, image['file_name'])
-        dest_path = os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit', 'train2017', image['file_name'])
-        shutil.copy2(src_path, dest_path)
+    os.makedirs(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'annotations'),exist_ok=True)
 
 
-    result_train['images'] = train_images
-    result_train['annotations'] = train_annotations
+    done = set()
+    train_images = []
+    test_images = []
+    val_iamges = []
+    for annotation in track(train_annotations, "copying train images"):    
+        image = image_id_to_index[annotation['image_id']]
+        image_name = image['file_name']
+        if image_name in done:
+            continue
+        train_images.append(image)
+        done.add(image_name)
+        dest_path = os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit', 'train2017', image_name)
+        image_path = os.path.join(data_root_path, 'tsinghua_gtsdb_full', image_name)
+        shutil.copy(image_path, dest_path)
 
-    result_test['images'] = test_images
-    result_test['annotations'] = test_annotations
+    for annotation in track(test_annotations, "copying test images"):    
+        image = image_id_to_index[annotation['image_id']]
+        image_name = image['file_name']
+        if image_name in done:
+            continue
+        test_images.append(image)
+        done.add(image_name)
+        dest_path = os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit', 'test2017', image_name)
+        image_path = os.path.join(data_root_path, 'tsinghua_gtsdb_full', image_name)
+        shutil.copy(image_path, dest_path)
 
-    result_validation['images'] = val_images
-    result_validation['annotations'] = val_annotations
+    for annotation in track(val_annotations, "copying validation images"):    
+        image = image_id_to_index[annotation['image_id']]
+        image_name = image['file_name']
+        if image_name in done:
+            continue
+        val_iamges.append(image)
+        done.add(image_name)
+        dest_path = os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit', 'val2017', image_name)
+        image_path = os.path.join(data_root_path, 'tsinghua_gtsdb_full', image_name)
+        shutil.copy(image_path, dest_path)
+    
+        
 
-    # Save the partitioned data
-    with open(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit','annotations','test2017.json'), 'w') as f:
-        json.dump(result_test, f)
-    with open(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'annotations','val2017.json'), 'w') as f:
-        json.dump(result_validation, f)
-    with open(os.path.join(data_root_path,'tsinghua_gtsdb_speedlimit', 'annotations','train2017.json'), 'w') as f:
-        json.dump(result_train, f)
+    # Create the annotation files for train, validation, and test sets
+    train_data = {
+        "images": train_images,
+        "annotations": train_annotations,
+        "categories": data["categories"]
+    }
+    with open(os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit', 'annotations', 'train2017.json'), 'w') as f:
+        json.dump(train_data, f)
+
+    val_data = {
+        "images": val_iamges,
+        "annotations": val_annotations,
+        "categories": data["categories"]
+    }
+    with open(os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit', 'annotations', 'val2017.json'), 'w') as f:
+        json.dump(val_data, f)
+
+    test_data = {
+        "images": test_images,
+        "annotations": test_annotations,
+        "categories": data["categories"]
+    }
+    with open(os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit', 'annotations', 'test2017.json'), 'w') as f:
+        json.dump(test_data, f)
+
+
+    
+
+def oversample(data_root_path, file_name):
+    np.random.seed(42)
+    coco_annotations_file = os.path.join(data_root_path, 'tsinghua_gtsdb_speedlimit', 'annotations',
+                                         file_name)
+    # Load the COCO dataset
+    coco = COCO(coco_annotations_file)
+
+    # Get a list of all image IDs in the dataset
+    image_ids = coco.getImgIds()
+
+    # Group image IDs by class
+    class_to_images = defaultdict(list)
+    for image_id in image_ids:
+        annotations = coco.loadAnns(coco.getAnnIds(imgIds=image_id))
+        for annotation in annotations:
+            class_id = annotation["category_id"]
+            class_to_images[class_id].append(image_id)
+
+    # Compute the number of images to oversample for each class
+    # max_cls_count = 400
+    class_counts = defaultdict(int)
+    for class_id, images in class_to_images.items():
+        # images_ = images[:max_cls_count]
+        # class_to_images[class_id] = images_
+        class_counts[class_id] = len(images)
+        # max_cls_count = max(max_cls_count, class_counts[class_id])
+
+    oversample_counts = defaultdict(int)
+
+    print(class_counts)
+    for class_id, class_count in class_counts.items():
+        if class_count < max_cls_count:
+            oversample_counts[class_id] = max_cls_count - class_count
+        else:
+            oversample_counts[class_id] = 0
+
+    print("oversample_counts", oversample_counts)
+
+    # Randomly sample images to oversample for each class
+    oversample_image_ids = []
+    for class_id, count in oversample_counts.items():
+        if count == 0:
+            images_to_oversample = class_to_images[class_id]
+            print(len(images_to_oversample))
+        else:
+            images_to_oversample = map(lambda x: int(
+                x), np.random.choice(class_to_images[class_id], count))
+        oversample_image_ids.extend(images_to_oversample)
+
+    # Create a new COCO dataset with the oversampled images
+    oversampled_dataset = {"images": [], "annotations": [],
+                           "categories": coco.dataset["categories"]}
+    for i, image_id in enumerate(oversample_image_ids):
+        image_info = coco.imgs[image_id]
+        new_image_info = {"file_name": image_info["file_name"], "height": image_info["height"],
+                          "width": image_info["width"], "id": i}
+        oversampled_dataset["images"].append(new_image_info)
+        annotations = coco.loadAnns(coco.getAnnIds(imgIds=image_id))
+        print("len", len(annotations))
+        for annotation in annotations:
+            new_annotation = dict(annotation)
+            new_annotation["id"] = len(oversampled_dataset["annotations"])
+            new_annotation["image_id"] = i
+            oversampled_dataset["annotations"].append(new_annotation)
+
+    len(oversampled_dataset["images"])
+    # Write the oversampled dataset to a new annotations file
+    # output_file = os.path.join(coco_annotations_file, "train2017.json")
+    with open(coco_annotations_file, "w") as f:
+        json.dump(oversampled_dataset, f)
 
 
 
@@ -328,7 +440,6 @@ if __name__ == '__main__':
                                "pl40", "pl15", "pl50", "pl60", "pl70", "pl80"]
     tsinghua_data = filter_annotations(tsinghua_data, tsinghua_labels_to_keep)
 
-    print("Parsing tsinghua dataset")
     parse_tsinghua(tsinghua_data)
 
     gtsdb_labels_to_keep = {'0': '20', '1': '30', '2': '50', '3': '60',
@@ -336,11 +447,14 @@ if __name__ == '__main__':
     gtsdb_labels_to_keep = ['0', '1', '2', '3', '4', '5', '7', '8']
 
     gtsdb_data = load_txt(gtsdb_data_path, gtsdb_labels_to_keep)
-    print("Parsing gtsdb dataset")
+
     parse_gtsdb(gtsdb_data)
 
     shuffle_and_split(total)
 
+    # oversample("datasets", "train2017.json")
+    # oversample("datasets", "test2017.json")
+    # oversample("datasets", "val2017.json")
     print('total Images: ' + str(len(total['images'])))
     print('total Annotations: ' + str(len(total['annotations'])))
 
@@ -354,3 +468,6 @@ if __name__ == '__main__':
     print('Test Images: ' + str(len(result_test['images'])))
     print('Test Annotations: ' + str(len(result_test['annotations'])))
 
+    coco_annotations_file = "datasets/tsinghua_gtsdb_speedlimit/annotations/train2017.json"
+    coco = COCO(coco_annotations_file)
+    print(len(coco.getImgIds()))
