@@ -8,6 +8,7 @@ import os
 import cv2
 import torch.optim as optim
 import numpy as np
+from torch.utils.data import DataLoader
 
 """
     implementation for high-level representation guided denoiser from
@@ -140,11 +141,16 @@ class COCODataset(data.Dataset):
         img_info  = coco.loadImgs(img_id)[0]
         img_path = os.path.join(self.root_dir, img_info['file_name'])
         img = cv2.imread(img_path)
+        img = Preprocessor().preprocess_model_input(img)
+        # if img.shape != (3,640,640):
+        #     print("FALSE: " + str(img.shape))
+        # else:
+        #     print("True")
         ann_ids = coco.getAnnIds(imgIds=img_id)
         anns = coco.loadAnns(ann_ids)
 
         if self.transofms is not None:
-            img, ann = self.transofms(img, anns)
+            img, anns = self.transofms(img, anns)
         return img, anns
 
 class ExperimentalLoss(nn.Module):
@@ -170,7 +176,7 @@ class Preprocessor:
         """
         self.ratio = min(input_size[0] / img.shape[0],
                             input_size[1] / img.shape[1])
-        resized_img = cv2.resize(
+        resized_img = cv2.resize(   
             img,
             (int(img.shape[1] * self.ratio), int(img.shape[0] * self.ratio)),
             interpolation=cv2.INTER_LINEAR,
@@ -242,7 +248,7 @@ if __name__ == "__main__":
     
     model = HGD()
     model.eval()
-    #model()
+
     
     from prettytable import PrettyTable
 
@@ -257,8 +263,25 @@ if __name__ == "__main__":
         print(table)
         print(f"Total Trainable Params: {total_params}")
         return total_params
-    count_parameters(model)
+    #count_parameters(model)
     
+    
+    
+    dataset_path = os.path.join(os.path.dirname(os.getcwd()),'model','datasets','tsinghua_gtsdb_speedlimit')
+    annotations_path = os.path.join(dataset_path,'annotations')
+    train_dataset = COCODataset(os.path.join(dataset_path,'train2017'),os.path.join(annotations_path,'train2017.json'))
+    test_dataset = COCODataset(os.path.join(dataset_path,'test2017'),os.path.join(annotations_path,'test2017.json'))
+    
+    train_dataloader = DataLoader(train_dataset,batch_size=64,shuffle=True)
+
+    
+    # print(len(train_dataset))
+
+    # for itemidx in range(len(train_dataset)):
+    #     train_dataset.__getitem__(itemidx)
+    # print("done")
+    #print(train_dataset.__getitem__(1))
+    #print(test_dataset.__getitem__(1))
     # TODO: Do the loaders stuff
     #trainer = Trainer(model,TEMP_TRAIN_LOADER,TEMP_VAL_LOADER,optim.Adam(model.parameters(),lr= 0.001))
     
