@@ -5,7 +5,7 @@ import pandas as pd
 import os
 import numpy as np
 import cv2
-from sign_classifier import SignClassifierModel
+from sign_classifier import SignClassifierNet
 from torch.optim import SGD, Adam
 import  torch.optim.lr_scheduler as lr_scheduler
 from torch.nn import CrossEntropyLoss, Module
@@ -159,7 +159,7 @@ if __name__ == "__main__":
     val_data = SignDataset(root_dir, "val", "val.csv")
     train_loader = DataLoader(train_data, batch_size=64, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=64, shuffle=True)
-    model = SignClassifierModel()
+    model = SignClassifierNet()
     # adam
     # optimizer = SGD(net.parameters(), lr=1e-5, momentum=0.9,
     #                  nesterov=False)

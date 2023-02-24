@@ -46,41 +46,4 @@ class CustomYOLOHead(YOLOXHead):
         outputs = torch.cat(
             [x.flatten(start_dim=2) for x in outputs], dim=2
         ).permute(0, 2, 1)
-        
-        """
-            loss calculation required for the attack
-        """
-        if self.training:
-            """
-            If there's no labels given that means we are doing an untargeted attack and need some labels to obtain the 
-            loss function so we transform  the output of the model into a one hot vector encoding for the classificatoins
-            and simmilarly for the objectness to obtain fake targets and then calculate the loss on them
-
-            TODO: A random box could be added here to attack the part of the bounding box
-
-            """
-            if labels is None:
-                with torch.no_grad():
-                    objs_targets = (outputs[:, :, 4] > self.obj_threshold).float()
-                    cls_targets = (outputs[:, :, 5:] > self.cls_threshold).float()
-                return self.get_custom_loss(outputs, cls_targets, objs_targets)
-        else:
-            return outputs
-
-    """ 
-    TODO:
-    The loss we obtain can be imporved by letting the model decode its output to obtain the number of objects actually present
-    in the images 
-    check this
-    """
-
-    def get_custom_loss(
-            self,
-            outputs, 
-            cls_targets: Tensor,
-            objs_targets: Tensor,
-            ):
-
-        loss_cls = F.binary_cross_entropy(outputs[:, :, 5:], cls_targets)
-        loss_objs = F.binary_cross_entropy(outputs[:, :, 4], objs_targets)
-        return loss_cls.sum() + loss_objs.sum()
+        return outputs

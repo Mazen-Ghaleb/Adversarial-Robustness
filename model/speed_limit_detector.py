@@ -159,7 +159,7 @@ class SpeedLimitDetector:
     def get_model_output(self, imgs:np.ndarray) -> np.ndarray:
         assert not isinstance(imgs, type(None)), 'No Images give'
         assert not isinstance(imgs, type(np.ndarray)), f'The input must be of type {np.ndarray}'
-        inputs = torch.from_numpy(imgs).to(self.device)
+        inputs = imgs
         self.model.eval()
         with torch.no_grad():
             output = self.model(inputs).cpu().numpy()
@@ -188,7 +188,7 @@ class SpeedLimitDetector:
                 # if score > 0.9:
                 #     print(float(CLASSES[cls_ind])) # else:
                 #     print(-1.0)
-                return float(self.classes[cls_ind]), score, final_boxes
+                return final_cls_inds, final_scores, final_boxes
             return None
     
     def detect_sign(self, image):
