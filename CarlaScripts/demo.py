@@ -18,12 +18,13 @@ class Demo:
         self.detector = SpeedLimitDetector(self.device)
         self.classifier = SignClassifier(self.device)
         self.classes = np.array([100, 120, 20, 30, 40, 15, 50, 60, 70, 80])
-        self.attacks = {"fgsm": FGSM(), "it-fgsm": ItFGSM()}
+        self.attacks = {"FGSM": FGSM(), "IT-FGSM": ItFGSM()}
     
     def preprocess(self, image:np.ndarray):
+        self.image = image
         self.preprocessed_image = self.detector.preprocess(image)
 
-    def run_without_attack(self,image:np.ndarray):
+    def run_without_attack(self):
         images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
         detection_output = self.detector.get_model_output(images)[0]
         detection_output = self.detector.decode_model_output(detection_output)
@@ -34,7 +35,7 @@ class Demo:
         cropped_signs = []
         for box in np.asarray(detection_boxes, dtype=int):
             xmin, ymin, xmax, ymax = box
-            cropped_sign = self.classifier.preprocess(image[ymin:ymax, xmin: xmax, :])
+            cropped_sign = self.classifier.preprocess(self.image[ymin:ymax, xmin: xmax, :])
             cropped_signs.append(cropped_sign)
         cropped_signs = np.asarray(cropped_signs)
         
@@ -43,7 +44,7 @@ class Demo:
         classification_labels, classification_conf =  self.classifier.classify_signs(cropped_signs)
         return self.classes[classification_labels], classification_conf, detection_boxes
     
-    def run_with_attack(self, image:np.ndarray, attack_type):
+    def run_with_attack(self, attack_type):
 
         attack: AttackBase = self.attacks[attack_type]
 
@@ -64,7 +65,7 @@ class Demo:
         cropped_signs = []
         for box in np.asarray(detection_boxes, dtype=int):
             xmin, ymin, xmax, ymax = box
-            cropped_sign = self.classifier.preprocess(image[ymin:ymax, xmin: xmax, :])
+            cropped_sign = self.classifier.preprocess(self.image[ymin:ymax, xmin: xmax, :])
             cropped_signs.append(cropped_sign)
         cropped_signs = np.asarray(cropped_signs)
 
@@ -113,11 +114,11 @@ if __name__ == "__main__":
     print(output[0], output[1], output[2])
 
 
-    output = demo.run_with_attack(img, "fgsm")
+    output = demo.run_with_attack(img, "FGSM")
     print("with fgsm attack: ")
     print(output[0], output[1], output[2])
 
-    output = demo.run_with_attack(img, "it-fgsm")
+    output = demo.run_with_attack(img, "IT-FGSM")
     print("with it-fgsm attack: ")
     print(f"labels: \n{output[0]}")
     print(f"conf: \n{output[1]}")

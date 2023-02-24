@@ -51,14 +51,15 @@ except ImportError:
         'cannot import torch, make sure torch package is installed')
 
 # Method imports
-from attack.fast_attacks import fgsm, it_fgsm
+# from attack.fast_attacks import fgsm, it_fgsm
 
 # Class imports
 from KeyboardControl import KeyboardControl
 from HUD import HUD
 from BBHUD import BBHUD
 from World import World
-from model.speed_limit_detector import SpeedLimitDetector
+from Demo import Demo 
+# from model.speed_limit_detector import SpeedLimitDetector
 
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
@@ -109,26 +110,26 @@ def game_loop(args):
         for sign in world.world.get_actors().filter('traffic.speed_limit.90'):
             sign.destroy()
 
-        world.cuda_available = torch.cuda.is_available()
-        if world.cuda_available:
-            print("CUDA IS WORKING")
-            world.device = torch.device("cuda")
-        else:
-            world.device = torch.device("cpu")
-            print("CUDA ISNT WORKING")
+        # world.cuda_available = torch.cuda.is_available()
+        # if world.cuda_available:
+        #     print("CUDA IS WORKING")
+        #     world.device = torch.device("cuda")
+        # else:
+        #     world.device = torch.device("cpu")
+        #     print("CUDA ISNT WORKING")
         
         if (world.detector is None):
-            world.detector = SpeedLimitDetector(world.device)
+            world.detector = Demo()
             
             # Initial cache of function
-            temp_cache_img = world.detector.preprocess(cv2.imread("../out/sample.png"))
-            temp_cache = world.detector.detect_sign(temp_cache_img)
+            world.detector.preprocess(cv2.imread("../out/sample.png"))
+            temp_cache = world.detector.run_without_attack()
             
             # Initial cache of function
-            world.attack_methods.append((fgsm,"FGSM"))
-            world.attack_methods.append((it_fgsm,"IT-FGSM"))
-                        
-            temp_cache = fgsm(world.detector.model, temp_cache_img, world.device, 4, True, batch= False)
+            world.attack_methods.append(("FGSM"))
+            world.attack_methods.append(("IT-FGSM"))
+            
+            temp_cache = world.detector.run_with_attack(world.attack_methods[0])
             #temp_cache = it_fgsm(world.detector.model, temp_cache_img, world.device, 4, True, batch= False)
 
         controller = KeyboardControl(world, args.autopilot)

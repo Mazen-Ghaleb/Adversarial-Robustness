@@ -100,8 +100,8 @@ class World(object):
         self.modelClassificationPicture_flag = False
 
         self.detector = None
-        self.device = None
-        self.cuda_available = False
+        # self.device = None
+        # self.cuda_available = False
         self.isOverrideSpeed = False
 
         self.model_result = None
@@ -287,18 +287,18 @@ def to_bgr_array(image):
     array = array[:, :, :3]
     return array
 
-def drawBoundingBox(boxes, image, classification, confidence, color =(0, 255, 0), font = cv2.FONT_HERSHEY_SIMPLEX, thickness = 2):
-    for box in boxes:
+def drawBoundingBox(boxes, image, classifications, confidences, color =(0, 255, 0), font = cv2.FONT_HERSHEY_SIMPLEX, thickness = 2):
+    for box,classification,confidence in zip(boxes,classifications,confidences):
         detected_image = cv2.rectangle(image, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), color, thickness)
         detected_image = cv2.putText(detected_image, "{}: {:.2f} %".format(int(classification), confidence*100), 
         (int(box[0]), int(box[1] - 5)), font, 0.6, color, 1)
     return detected_image
 
-def calculate_model(image, world):
+def calculate_model(image, world: World):
     total_start = timer()
     if (world.model_currentTick == 0):  # Performs the calculation every world.model_tickRate ticks
         image = to_bgr_array(image)
-        preprocessed_img = world.detector.preprocess(image)
+        world.detector.preprocess(image)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
         if world.modelPicture_flag:
@@ -306,10 +306,10 @@ def calculate_model(image, world):
             world.hud.notification("Saved current view of Speed-limit Sign detection")
             world.modelPicture_flag = False
 
-        calculate_classification(world, preprocessed_img, np.array(image, copy=True))
+        calculate_classification(world, np.array(image, copy=True))
         
         if world.attack_model_flag:
-            calculate_attack(world, preprocessed_img, np.array(image, copy=True))
+            calculate_attack(world, np.array(image, copy=True))
             calculate_overrideSpeed(world, world.attack_model_speed)
         else:
             calculate_overrideSpeed(world, world.model_speed)
@@ -319,13 +319,13 @@ def calculate_model(image, world):
 
     world.model_currentTick = (world.model_currentTick+1) %world.model_tickRate
 
-def calculate_classification(world, preprocessed_img, image):
+def calculate_classification(world, image):
     detection_start = timer()
-    world.model_result = world.detector.detect_sign(preprocessed_img)
+    world.model_result = world.detector.run_without_attack()
 
     if world.model_result is not None:
-        world.model_speed = world.model_result[0]
-        world.model_confidence = world.model_result[1]
+        world.model_speed = world.model_result[0][0]
+        world.model_confidence = world.model_result[1][0]
         world.model_image = drawBoundingBox(world.model_result[2], image, world.model_result[0], world.model_result[1])
 
         if world.modelClassificationPicture_flag:
@@ -341,14 +341,13 @@ def calculate_classification(world, preprocessed_img, image):
         world.model_image = np.zeros((640, 640, 3), dtype = np.uint8)
         print("{:<25}".format("Classification Model time"),": {:.3f}s No Sign Detected".format(timer()-detection_start))
 
-def calculate_attack(world, preprocessed_img, image):
+def calculate_attack(world: World, image):
     attack_start = timer()
-    perturbed_image = world.attack_methods[world.attack_currentMethodIndex][0](world.detector.model, preprocessed_img, world.device, 4, True, batch= False)
-    world.attack_model_result = world.detector.detect_sign(perturbed_image)
+    world.attack_model_result = world.detector.run_with_attack(world.attack_methods[world.attack_currentMethodIndex])
     
     if world.attack_model_result is not None:
-        world.attack_model_speed = world.attack_model_result[0]
-        world.attack_model_confidence = world.attack_model_result[1]
+        world.attack_model_speed = world.attack_model_result[0][0]
+        world.attack_model_confidence = world.attack_model_result[1][0]
         world.attack_model_image = drawBoundingBox(world.attack_model_result[2], image, world.attack_model_result[0], world.attack_model_result[1])
         
         print("{:<25}".format("{} Attack Model time".format(world.attack_methods[world.attack_currentMethodIndex][1])),
