@@ -6,6 +6,9 @@ import torch
 import numpy as np
 from attack.attack_base import AttackBase
 import torch.nn.functional as F
+from model.sign_classifier import classifier_loss, classifier_target_generator
+from model.custom_yolo import yolox_loss, yolox_target_generator
+
 
 class Demo:
     def __init__(self) -> None:
@@ -72,30 +75,31 @@ class Demo:
         cropped_signs = torch.from_numpy(cropped_signs).float().to(self.device)
 
         attack.model = self.classifier.model
-        attack.loss = F.cross_entropy
+        attack.loss = classifier_loss
         attack.target_generator = classifier_target_generator
         perturbed_cropped_signs = attack.generate_attack(cropped_signs)
 
         classification_labels, classification_conf =  self.classifier.classify_signs(perturbed_cropped_signs)
         return self.classes[classification_labels], classification_conf, detection_boxes
 
-def yolox_loss(outputs, targets):
-    loss_cls = F.binary_cross_entropy(outputs[:, :, 5:], targets[:, :, 5:])
-    loss_objs = F.binary_cross_entropy(outputs[:, :, 4], targets[:, :, 4])
-    return loss_cls.sum() + loss_objs.sum()
+# def yolox_loss(outputs, targets):
+#     loss_cls = F.binary_cross_entropy(outputs[:, :, 5:], targets[:, :, 5:])
+#     loss_objs = F.binary_cross_entropy(outputs[:, :, 4], targets[:, :, 4])
+#     return loss_cls.sum() + loss_objs.sum()
 
-def yolox_target_generator(outputs):
-    obj_threshold  = 0.5
-    cls_threshold  = 0.5
-    with torch.no_grad():
-        objs_targets = (outputs[:, :, 4] > obj_threshold).float().unsqueeze(dim=2)
-        cls_targets = (outputs[:, :, 5:] > cls_threshold).float()
-        return torch.cat((outputs[:, :, :4], objs_targets, cls_targets), dim=2)
+# def yolox_target_generator(outputs):
+#     obj_threshold  = 0.5
+#     cls_threshold  = 0.5
+#     with torch.no_grad():
+#         objs_targets = (outputs[:, :, 4] > obj_threshold).float().unsqueeze(dim=2)
+#         cls_targets = (outputs[:, :, 5:] > cls_threshold).float()
+#         return torch.cat((outputs[:, :, :4], objs_targets, cls_targets), dim=2)
 
-def classifier_target_generator(outputs):
-    labels = outputs.argmax(1)
-    targets = F.one_hot(labels, 10).float()
-    return targets
+# def classifier_target_generator(outputs):
+#     labels = outputs.argmax(1)
+#     targets = F.one_hot(labels, 10).float()
+#     return targets
+
 
     
 

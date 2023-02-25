@@ -5,7 +5,8 @@ import os
 import torch
 import cv2
 import numpy as np
-
+from model.sign_classifier import classifier_loss, classifier_target_generator
+from model.custom_yolo import yolox_loss, yolox_target_generator
 
 class SignClassifierNet(nn.Module):
     def __init__(self) -> None:
@@ -64,3 +65,11 @@ class SignClassifier:
             labels = model_outputs.argmax(1)
             conf = model_outputs[np.arange(model_outputs.shape[0]),labels.ravel()]
             return labels, conf
+
+def classifier_target_generator(outputs):
+    labels = outputs.argmax(1)
+    targets = F.one_hot(labels, 10).float()
+    return targets
+
+def classifier_loss(outputs, targets):
+    F.cross_entropy(outputs, targets)

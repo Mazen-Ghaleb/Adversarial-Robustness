@@ -9,6 +9,10 @@ import cv2
 import torch.optim as optim
 import numpy as np
 from torch.utils.data import DataLoader
+from model.sign_classifier import classifier_loss, classifier_target_generator
+from model.custom_yolo import yolox_loss, yolox_target_generator
+from attacks.fgsm import FGSM
+from attack.attack_base import AttackBase
 
 """
     implementation for high-level representation guided denoiser from
@@ -124,11 +128,12 @@ class Fuse(nn.Module):
         return result_image 
 
 class COCODataset(data.Dataset):
-    def __init__(self, root_dir,annotaiton_file, transforms=None):
+    def __init__(self, root_dir,annotaiton_file, transforms=None, attack):
         self.coco = COCO(annotaiton_file)
         self.root_dir = root_dir
         self.transofms = transforms
         self.ids = list(sorted(self.coco.imgs.keys()))
+        self.attack = attack
 
     def __len__(self):
         return len(self.ids)
@@ -146,8 +151,9 @@ class COCODataset(data.Dataset):
         #     print("FALSE: " + str(img.shape))
         # else:
         #     print("True")
-        ann_ids = coco.getAnnIds(imgIds=img_id)
-        anns = coco.loadAnns(ann_ids)
+        # ann_ids = coco.getAnnIds(imgIds=img_id)
+        # anns = coco.loadAnns(ann_ids)
+        anns = -1
 
         if self.transofms is not None:
             img, anns = self.transofms(img, anns)
@@ -191,22 +197,34 @@ class Preprocessor:
 
 
 class Trainer:
-    def __init__(self, model, train_loader, val_loader, optimzer, criterion = ExperimentalLoss()) -> None:
+    def __init__(self, model, target_model, train_loader, val_loader, optimzer, criterion = ExperimentalLoss()) -> None:
         self.model = model
+        self.target_model = target_model
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model.to(self.device)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.optimzer = optimzer
         self.criterion = criterion
+        self.attack = FGSM()
+        self.attack.model = self.target_model
+        self.attack.loss = yolox_loss
+        self.attack.target_generator = yolox_target_generator
 
     def train_epoch(self):
         self.model.train()
         train_loss = 0.0
-        for i, (inputs, targets) in enumerate(self.train_loader):
+        for i, (images,_) in enumerate(self.train_loader):
+            perturbed_images = self.attack(images)
             self.optimzer.zero_grad()
-            outputs = self.model(inputs)
-            loss = self.criterion(outputs, targets)
+            hgd_outputs = self.model(perturbed_images)
+            self.target_model.eval()
+            with torch.no_grad():
+                denoised_images = perturbed_images - hgd_outputs
+                target_model_outputs = self.target_model(denoised_images)
+                target_model_targets = self.target_model(images)
+                
+            loss = self.criterion(target_model_outputs, target_model_targets)
             loss.backward()
             self.optimzer.step()
             train_loss += loss.item() * inputs.size(0)
@@ -232,9 +250,9 @@ class Trainer:
             epoch_val_loss = self.val_epoch()
             train_losses.append(epoch_train_loss)
             val_losses.append(epoch_val_loss)
-            print(f"Epoch {epoch + 1}/{n_epochs}, "
-                  f"Train Loss: {epoch_train_loss:.4f}, "
-                  f"Val Loss: {epoch_val_loss:.4f}, ")
+            print(f"Epoch {epoch + 1}/{n_epochs},"
+                  f"Train Loss: {epoch_train_loss:.4f},"
+                  f"Val Loss: {epoch_val_loss:.4f},")
         return train_losses, val_losses 
 
 
@@ -267,10 +285,11 @@ if __name__ == "__main__":
     
     
     
+
     dataset_path = os.path.join(os.path.dirname(os.getcwd()),'model','datasets','tsinghua_gtsdb_speedlimit')
     annotations_path = os.path.join(dataset_path,'annotations')
     train_dataset = COCODataset(os.path.join(dataset_path,'train2017'),os.path.join(annotations_path,'train2017.json'))
-    test_dataset = COCODataset(os.path.join(dataset_path,'test2017'),os.path.join(annotations_path,'test2017.json'))
+    # test_dataset = COCODataset(os.path.join(dataset_path,'test2017'),os.path.join(annotations_path,'test2017.json'))
     
     train_dataloader = DataLoader(train_dataset,batch_size=64,shuffle=True)
 
@@ -284,5 +303,3 @@ if __name__ == "__main__":
     #print(test_dataset.__getitem__(1))
     # TODO: Do the loaders stuff
     #trainer = Trainer(model,TEMP_TRAIN_LOADER,TEMP_VAL_LOADER,optim.Adam(model.parameters(),lr= 0.001))
-    
-
