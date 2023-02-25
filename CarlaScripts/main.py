@@ -44,22 +44,12 @@ except ImportError:
     raise RuntimeError(
         'cannot import pygame, make sure pygame package is installed')
 
-try:
-    import torch
-except ImportError:
-    raise RuntimeError(
-        'cannot import torch, make sure torch package is installed')
-
-# Method imports
-# from attack.fast_attacks import fgsm, it_fgsm
-
 # Class imports
 from KeyboardControl import KeyboardControl
 from HUD import HUD
 from BBHUD import BBHUD
 from World import World
 from Demo import Demo 
-# from model.speed_limit_detector import SpeedLimitDetector
 
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
@@ -109,14 +99,6 @@ def game_loop(args):
         world = World(sim_world, hud, bbhud, args)
         for sign in world.world.get_actors().filter('traffic.speed_limit.90'):
             sign.destroy()
-
-        # world.cuda_available = torch.cuda.is_available()
-        # if world.cuda_available:
-        #     print("CUDA IS WORKING")
-        #     world.device = torch.device("cuda")
-        # else:
-        #     world.device = torch.device("cpu")
-        #     print("CUDA ISNT WORKING")
         
         if (world.detector is None):
             world.detector = Demo()
@@ -156,6 +138,30 @@ def game_loop(args):
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
+            
+            if(world.model_image_window):
+                if cv2.getWindowProperty('Model Image', cv2.WND_PROP_VISIBLE) == 0 and not world.window_first_stats[0]:
+                    world.toggle_modelWindow()
+                else:
+                    # Display the Model Image in window
+                    cv2.imshow('Model Image', cv2.cvtColor(world.model_image, cv2.COLOR_BGR2RGB))
+                    world.window_first_stats[0] = False
+                
+            if(world.attack_model_image_window):
+                if cv2.getWindowProperty('Attack Image', cv2.WND_PROP_VISIBLE) == 0 and not world.window_first_stats[1]:
+                    world.toggle_attackWindow()
+                else:
+                    # Display the Attack Image in window
+                    cv2.imshow('Attack Image', cv2.cvtColor(world.attack_model_image, cv2.COLOR_BGR2RGB))
+                    world.window_first_stats[1] = False
+            
+            if(world.defense_model_image_window):
+                if cv2.getWindowProperty('Defense Image', cv2.WND_PROP_VISIBLE) == 0 and not world.window_first_stats[2]:
+                    world.toggle_defenseWindow()
+                else:
+                    # Display the Defense Image in window
+                    cv2.imshow('Defense Image', cv2.cvtColor(world.defense_model_image, cv2.COLOR_BGR2RGB))
+                    world.window_first_stats[2] = False
 
     finally:
 
@@ -169,6 +175,7 @@ def game_loop(args):
             world.destroy()
 
         pygame.quit()
+        cv2.destroyAllWindows()
 
 
 # ==============================================================================
@@ -242,6 +249,9 @@ def main():
     logging.info('listening to server %s:%s', args.host, args.port)
 
     print(Ht.__doc__)
+    print("    F3           : toggle Model Image Window")
+    print("    F4           : toggle Attack Image Window")
+    print("    F5           : toggle Defense Image Window")
 
     try:
 

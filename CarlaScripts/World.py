@@ -93,6 +93,7 @@ class World(object):
 
         self.model_currentTick = 0
         self.model_tickRate = 20
+        self.window_first_stats = [True, True, True]
 
         self.model_flag = False
         self.attack_model_flag = False
@@ -100,14 +101,13 @@ class World(object):
         self.modelClassificationPicture_flag = False
 
         self.detector = None
-        # self.device = None
-        # self.cuda_available = False
         self.isOverrideSpeed = False
 
         self.model_result = None
         self.model_speed = None
         self.model_confidence = None
         self.model_image = np.zeros((640, 640, 3), dtype = np.uint8)
+        self.model_image_window = False
 
         self.attack_methods = []
         self.attack_currentMethodIndex = 0
@@ -116,12 +116,25 @@ class World(object):
         self.attack_model_speed = None
         self.attack_model_confidence = None
         self.attack_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
+        self.attack_model_image_window = False
         
         self.defense_model_result = None
         self.defense_model_speed = None
         self.defense_model_confidence = None
         self.defense_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
+        self.defense_model_image_window = False
 
+    def toggle_modelWindow(self):
+        self.model_image_window = not self.model_image_window
+        self.window_first_stats[0] = True
+    
+    def toggle_attackWindow(self):
+        self.attack_model_image_window = not self.attack_model_image_window
+        self.window_first_stats[1] = True
+        
+    def toggle_defenseWindow(self):
+        self.defense_model_image_window = not self.defense_model_image_window
+        self.window_first_stats[2] = True
 
     def restart(self):
         """Restart the world"""

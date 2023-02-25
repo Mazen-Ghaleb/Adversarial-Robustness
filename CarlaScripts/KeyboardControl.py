@@ -22,6 +22,9 @@ try:
     from pygame.locals import K_ESCAPE
     from pygame.locals import K_F1
     from pygame.locals import K_F2
+    from pygame.locals import K_F3
+    from pygame.locals import K_F4
+    from pygame.locals import K_F5
     from pygame.locals import K_LEFT
     from pygame.locals import K_PERIOD
     from pygame.locals import K_RIGHT
@@ -112,6 +115,12 @@ class KeyboardControl(object):
                     world.hud.toggle_info()
                 elif event.key == K_F2:
                     world.bbhud.toggle_info()
+                elif event.key == K_F3:
+                    world.toggle_modelWindow()
+                elif event.key == K_F4:
+                    world.toggle_attackWindow()
+                elif event.key == K_F5:
+                    world.toggle_defenseWindow()
                 elif event.key == K_v and pygame.key.get_mods() & KMOD_SHIFT:
                     world.next_map_layer(reverse=True)
                 elif event.key == K_v:
@@ -169,16 +178,16 @@ class KeyboardControl(object):
                         if (world.attack_model_flag):
                             world.toggle_attack_model(False)
                             world.attack_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
-                            world.hud.notification("{} Attack Sign detection disabled".format(world.attack_methods[world.attack_currentMethodIndex][1]))
+                            world.hud.notification("{} Attack Sign detection disabled".format(world.attack_methods[world.attack_currentMethodIndex]))
                         else:
                             world.toggle_attack_model(True)
-                            world.hud.notification("{} Attack Sign detection enabled".format(world.attack_methods[world.attack_currentMethodIndex][1]))
+                            world.hud.notification("{} Attack Sign detection enabled".format(world.attack_methods[world.attack_currentMethodIndex]))
                     else:
                         world.hud.notification(
                             "Can't enable Attack Sign detection while Sign detection is disabled")
                 elif event.key == K_f:
                     world.attack_currentMethodIndex = (world.attack_currentMethodIndex+1) % len(world.attack_methods)
-                    world.hud.notification("Changed Attack method to {}".format(world.attack_methods[world.attack_currentMethodIndex][1]))
+                    world.hud.notification("Changed Attack method to {}".format(world.attack_methods[world.attack_currentMethodIndex]))
                 elif event.key == K_o:
                     if (world.model_flag):
                         world.modelPicture_flag = True
