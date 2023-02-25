@@ -70,4 +70,4 @@ def classifier_target_generator(outputs):
     return targets
 
 def classifier_loss(outputs, targets):
-    F.cross_entropy(outputs, targets)
+    return F.cross_entropy(outputs, targets)

@@ -1,5 +1,5 @@
 from yolox.models import YOLOX as BaseYOLOX
-import torch.functional as F
+import torch.nn.functional as F
 import torch
 class CustomYOLOX(BaseYOLOX):
     def __init__(self, backbone=None, head=None):

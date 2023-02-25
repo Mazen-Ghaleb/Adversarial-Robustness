@@ -34,6 +34,7 @@ class Demo:
         if detection_output is None:
             return None
         detection_label, detection_conf, detection_boxes = detection_output
+        print(detection_label, detection_conf)
 
         cropped_signs = []
         for box in np.asarray(detection_boxes, dtype=int):
@@ -110,20 +111,20 @@ if __name__ == "__main__":
     import cv2
     test_imgs_path = os.path.join(os.path.dirname(__file__), "../test_imgs")
     test_imgs_path = os.path.relpath(test_imgs_path, os.getcwd())
-    img = cv2.imread(os.path.join(test_imgs_path, "test.png"))
+    img = cv2.imread(os.path.join(test_imgs_path, "test6.png"))
     demo = Demo()
     demo.preprocess(img)
-    output = demo.run_without_attack(img)
+    output = demo.run_without_attack()
     print("without attack: ")
     print(output[0], output[1], output[2])
 
 
-    output = demo.run_with_attack(img, "FGSM")
-    print("with fgsm attack: ")
-    print(output[0], output[1], output[2])
+    # output = demo.run_with_attack("FGSM")
+    # print("with fgsm attack: ")
+    # print(output[0], output[1], output[2])
 
-    output = demo.run_with_attack(img, "IT-FGSM")
-    print("with it-fgsm attack: ")
-    print(f"labels: \n{output[0]}")
-    print(f"conf: \n{output[1]}")
-    print(f"boxes: \n{output[2]}")
+    # output = demo.run_with_attack("IT-FGSM")
+    # print("with it-fgsm attack: ")
+    # print(f"labels: \n{output[0]}")
+    # print(f"conf: \n{output[1]}")
+    # print(f"boxes: \n{output[2]}")
