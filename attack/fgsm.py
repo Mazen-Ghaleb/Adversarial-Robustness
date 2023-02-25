@@ -8,6 +8,7 @@ class FGSM(AttackBase):
         super(FGSM, self).__init__()
 
     def generate_attack(self, images, targets=None, eps=4, return_numpy=False):
+        super().generate_attack(images, targets, eps, return_numpy)
         images.requires_grad = True
 
         self.model.train()

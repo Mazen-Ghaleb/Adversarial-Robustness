@@ -9,7 +9,7 @@ class ItFGSM(AttackBase):
         super(ItFGSM, self).__init__()
 
     def generate_attack(self,images:Tensor, targets=None,eps:int=4, return_numpy=False):
-        
+        super().generate_attack(images, targets, eps, return_numpy)
         images.requires_grad = True
 
         iter = int(min(eps + 4, 1.25 * eps))

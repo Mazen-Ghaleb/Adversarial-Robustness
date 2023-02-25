@@ -5,8 +5,6 @@ import os
 import torch
 import cv2
 import numpy as np
-from model.sign_classifier import classifier_loss, classifier_target_generator
-from model.custom_yolo import yolox_loss, yolox_target_generator
 
 class SignClassifierNet(nn.Module):
     def __init__(self) -> None:

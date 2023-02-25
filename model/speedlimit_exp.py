@@ -3,6 +3,7 @@ from yolox.exp import Exp as MyExp
 from custom_yolo_head import CustomYOLOHead
 import torch.nn as nn
 from custom_yolo import CustomYOLOX
+import torch
 
 class Exp(MyExp):
     def __init__(self):
@@ -48,3 +49,31 @@ class Exp(MyExp):
         self.model.head.initialize_biases(1e-2)
         self.model.train()
         return self.model
+    
+    def get_optimizer(self, batch_size):
+        if "optimizer" not in self.__dict__:
+            if self.warmup_epochs > 0:
+                lr = self.warmup_lr
+            else:
+                lr = self.basic_lr_per_img * batch_size
+
+            pg0, pg1, pg2 = [], [], []  # optimizer parameter groups
+
+            for k, v in self.model.named_modules():
+                if hasattr(v, "bias") and isinstance(v.bias, nn.Parameter):
+                    pg2.append(v.bias)  # biases
+                if isinstance(v, nn.BatchNorm2d) or "bn" in k:
+                    pg0.append(v.weight)  # no decay
+                elif hasattr(v, "weight") and isinstance(v.weight, nn.Parameter):
+                    pg1.append(v.weight)  # apply decay
+
+            optimizer = torch.optim.Adam(
+                pg0, lr=lr,
+            )
+            optimizer.add_param_group(
+                {"params": pg1, "weight_decay": self.weight_decay}
+            )  # add pg1 with weight_decay
+            optimizer.add_param_group({"params": pg2})
+            self.optimizer = optimizer
+
+        return self.optimizer

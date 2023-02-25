@@ -9,9 +9,10 @@ import cv2
 import torch.optim as optim
 import numpy as np
 from torch.utils.data import DataLoader
-from model.sign_classifier import classifier_loss, classifier_target_generator
+# from model.sign_classifier import classifier_loss, classifier_target_generator
 from model.custom_yolo import yolox_loss, yolox_target_generator
-from attacks.fgsm import FGSM
+from model.speed_limit_detector import get_model
+from attack.fgsm import FGSM
 from attack.attack_base import AttackBase
 
 """
@@ -128,12 +129,11 @@ class Fuse(nn.Module):
         return result_image 
 
 class COCODataset(data.Dataset):
-    def __init__(self, root_dir,annotaiton_file, transforms=None, attack):
+    def __init__(self, root_dir,annotaiton_file, transforms=None):
         self.coco = COCO(annotaiton_file)
         self.root_dir = root_dir
         self.transofms = transforms
         self.ids = list(sorted(self.coco.imgs.keys()))
-        self.attack = attack
 
     def __len__(self):
         return len(self.ids)
@@ -215,7 +215,7 @@ class Trainer:
         self.model.train()
         train_loss = 0.0
         for i, (images,_) in enumerate(self.train_loader):
-            perturbed_images = self.attack(images)
+            perturbed_images = self.attack.generate_attack(images)
             self.optimzer.zero_grad()
             hgd_outputs = self.model(perturbed_images)
             self.target_model.eval()
@@ -227,7 +227,7 @@ class Trainer:
             loss = self.criterion(target_model_outputs, target_model_targets)
             loss.backward()
             self.optimzer.step()
-            train_loss += loss.item() * inputs.size(0)
+            train_loss += loss.item() * images.size(0)
         epoch_train_loss = train_loss / len(self.train_loader.dataset)
         return epoch_train_loss
 
@@ -290,8 +290,10 @@ if __name__ == "__main__":
     annotations_path = os.path.join(dataset_path,'annotations')
     train_dataset = COCODataset(os.path.join(dataset_path,'train2017'),os.path.join(annotations_path,'train2017.json'))
     # test_dataset = COCODataset(os.path.join(dataset_path,'test2017'),os.path.join(annotations_path,'test2017.json'))
+    val_dataset = COCODataset(os.path.join(dataset_path,'val2017'),os.path.join(annotations_path,'test2017.json'))
     
     train_dataloader = DataLoader(train_dataset,batch_size=64,shuffle=True)
+    val_dataloader = DataLoader(val_dataset,batch_size=64,shuffle=True)
 
     
     # print(len(train_dataset))
@@ -302,4 +304,7 @@ if __name__ == "__main__":
     #print(train_dataset.__getitem__(1))
     #print(test_dataset.__getitem__(1))
     # TODO: Do the loaders stuff
-    #trainer = Trainer(model,TEMP_TRAIN_LOADER,TEMP_VAL_LOADER,optim.Adam(model.parameters(),lr= 0.001))
+    target_model = get_model(torch.device("cpu"))
+    optimizer = optim.Adam(model.parameters(),lr= 0.001)
+    trainer = Trainer(model,target_model,train_dataloader, val_dataloader,optimizer)
+    trainer.train(1)
