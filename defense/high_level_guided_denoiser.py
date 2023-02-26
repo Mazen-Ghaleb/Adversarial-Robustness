@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from model.custom_yolo import yolox_loss, yolox_target_generator
 from model.speed_limit_detector import get_model
 from attack.fgsm import FGSM
-from attack.attack_base import AttackBase
+
 
 """
     implementation for high-level representation guided denoiser from
@@ -86,35 +86,35 @@ class C(nn.Module):
 class C2(nn.Module):
     def __init__(self, k, in_channels, out_channels, kernel_size) -> None:
         super(C2, self).__init__()
-        self.c_blocks = [
+        self.c_blocks = nn.Sequential(
             C(in_channels, out_channels, kernel_size),
             C(out_channels, out_channels, kernel_size),
-        ]
+        )
 
     def forward(self, x):
         # print("start", x.shape)
-        for c_block in self.c_blocks:
-            x = c_block(x)
+        # for c_block in self.c_blocks:
+        # x = c_block(x)
             # print(f"c2: {x.shape}")
         # print("end", x.shape)
-        return x
+        return self.c_blocks(x)
 
 class C3(nn.Module):
     def __init__(self, k, in_channels, out_channels, kernel_size) -> None:
         super(C3, self).__init__()
-        self.c_blocks = [
+        self.c_blocks = nn.Sequential(
             C(in_channels, out_channels, kernel_size, stride=2),
             C(out_channels, out_channels, kernel_size, stride=1),
             C(out_channels, out_channels, kernel_size, stride=1),
-        ]
+        )
 
     def forward(self, x):
         # print("start", x.shape)
-        for c_block in self.c_blocks:
-            x = c_block(x)
+        # for c_block in self.c_blocks:
+        #     x = c_block(x)
         #     print(f"c3: {x.shape}")
         # print("end", x.shape)
-        return x
+        return self.c_blocks(x)
         
 
 
@@ -147,13 +147,14 @@ class COCODataset(data.Dataset):
         img_path = os.path.join(self.root_dir, img_info['file_name'])
         img = cv2.imread(img_path)
         img = Preprocessor().preprocess_model_input(img)
+        # img = np.asarray(img,dtype=np.float16)
         # if img.shape != (3,640,640):
         #     print("FALSE: " + str(img.shape))
         # else:
         #     print("True")
         # ann_ids = coco.getAnnIds(imgIds=img_id)
         # anns = coco.loadAnns(ann_ids)
-        anns = -1
+        anns = img_info['file_name']
 
         if self.transofms is not None:
             img, anns = self.transofms(img, anns)
@@ -164,6 +165,7 @@ class ExperimentalLoss(nn.Module):
         super(ExperimentalLoss,self).__init__()
 
     def forward(self,denoised_output,bengin_output):
+        
         loss = torch.norm(torch.abs(denoised_output-bengin_output),p=1)
         return loss
 
@@ -197,11 +199,13 @@ class Preprocessor:
 
 
 class Trainer:
-    def __init__(self, model, target_model, train_loader, val_loader, optimzer, criterion = ExperimentalLoss()) -> None:
+    def __init__(self, model, target_model, train_loader, val_loader, device, optimzer, criterion) -> None:
         self.model = model
         self.target_model = target_model
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.model.to(self.device)
+        self.device = device
+        self.model.half().to(self.device)
+
+        self.target_model.half().to(self.device)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.optimzer = optimzer
@@ -215,14 +219,17 @@ class Trainer:
         self.model.train()
         train_loss = 0.0
         for i, (images,_) in enumerate(self.train_loader):
+            images = images.half()
+            images = images.to(self.device)
+            
             perturbed_images = self.attack.generate_attack(images)
             self.optimzer.zero_grad()
             hgd_outputs = self.model(perturbed_images)
-            self.target_model.eval()
-            with torch.no_grad():
-                denoised_images = perturbed_images - hgd_outputs
-                target_model_outputs = self.target_model(denoised_images)
-                target_model_targets = self.target_model(images)
+            self.target_model.train()
+            # with torch.no_grad():
+            denoised_images = perturbed_images - hgd_outputs
+            target_model_outputs = self.target_model(denoised_images)
+            target_model_targets = self.target_model(images)
                 
             loss = self.criterion(target_model_outputs, target_model_targets)
             loss.backward()
@@ -266,8 +273,8 @@ if __name__ == "__main__":
     
     model = HGD()
     model.eval()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    
     from prettytable import PrettyTable
 
     def count_parameters(model):
@@ -290,11 +297,14 @@ if __name__ == "__main__":
     annotations_path = os.path.join(dataset_path,'annotations')
     train_dataset = COCODataset(os.path.join(dataset_path,'train2017'),os.path.join(annotations_path,'train2017.json'))
     # test_dataset = COCODataset(os.path.join(dataset_path,'test2017'),os.path.join(annotations_path,'test2017.json'))
-    val_dataset = COCODataset(os.path.join(dataset_path,'val2017'),os.path.join(annotations_path,'test2017.json'))
+    val_dataset = COCODataset(os.path.join(dataset_path,'val2017'),os.path.join(annotations_path,'val2017.json'))
     
-    train_dataloader = DataLoader(train_dataset,batch_size=64,shuffle=True)
-    val_dataloader = DataLoader(val_dataset,batch_size=64,shuffle=True)
 
+    
+    train_dataloader = DataLoader(train_dataset,batch_size=1,shuffle=True,pin_memory=True)
+    val_dataloader = DataLoader(val_dataset,batch_size=1,shuffle=True,pin_memory=True)
+
+    
     
     # print(len(train_dataset))
 
@@ -304,7 +314,11 @@ if __name__ == "__main__":
     #print(train_dataset.__getitem__(1))
     #print(test_dataset.__getitem__(1))
     # TODO: Do the loaders stuff
-    target_model = get_model(torch.device("cpu"))
+    target_model = get_model(device)
+    # for parameter in model.parameters():
+    #     print(parameter)
     optimizer = optim.Adam(model.parameters(),lr= 0.001)
-    trainer = Trainer(model,target_model,train_dataloader, val_dataloader,optimizer)
+    trainer = Trainer(model,target_model,train_dataloader, val_dataloader, device,optimizer, criterion= ExperimentalLoss())
+    #print(model)
     trainer.train(1)
+    
