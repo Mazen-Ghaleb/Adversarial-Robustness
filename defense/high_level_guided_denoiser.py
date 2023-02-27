@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from model.custom_yolo import yolox_loss, yolox_target_generator
 from model.speed_limit_detector import get_model
 from attack.fgsm import FGSM
+import math
 
 
 """
@@ -47,6 +48,7 @@ class HGD(nn.Module):
     def forward(self, x) -> None:
         #forward path
         out_forward_c2 = self.forward_c2(x)
+
         out_forward_c3_1 = self.forward_c3_1(out_forward_c2)
         out_forward_c3_2 = self.forward_c3_2(out_forward_c3_1)
         out_forward_c3_3 = self.forward_c3_3(out_forward_c3_2)
@@ -73,7 +75,7 @@ class HGD(nn.Module):
 class C(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1,padding=1):
         super(C, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding,bias=False)
         self.bn = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU()
 
@@ -148,7 +150,8 @@ class COCODataset(data.Dataset):
         img_path = os.path.join(self.root_dir, img_info['file_name'])
         img = cv2.imread(img_path)
         img = Preprocessor().preprocess_model_input(img)
-        # img = np.asarray(img,dtype=np.float16)
+        
+        img = np.asarray(img,dtype=np.float32)
         # if img.shape != (3,640,640):
         #     print("FALSE: " + str(img.shape))
         # else:
@@ -158,7 +161,7 @@ class COCODataset(data.Dataset):
         
         attacked_image_path = os.path.join(self.attacked_images_path,img_info['file_name'])
         attacked_image = cv2.imread(attacked_image_path).transpose((2,0,1))
-
+        attacked_image = np.asarray(attacked_image,dtype=np.float32)
           
         if self.transofms is not None:
             img, attacked_image = self.transofms(img, attacked_image)
@@ -168,9 +171,15 @@ class ExperimentalLoss(nn.Module):
     def __init__(self):
         super(ExperimentalLoss,self).__init__()
 
-    def forward(self,denoised_output,bengin_output):
+    def forward(self,denoised_output,benign_output):
         
-        loss = torch.norm(torch.abs(denoised_output-bengin_output),p=1)
+        denoised_output = denoised_output.type(torch.float32)
+        benign_output = benign_output.type(torch.float32)
+        # print(f"denoised output {denoised_output.dtype}")
+        # print(f"benign output {benign_output.dtype}")
+        loss = torch.linalg.norm(denoised_output-benign_output,dim=(1,2),ord=2).mean()
+
+        #print(f"loss {loss}")
         return loss
 
 class Preprocessor:    
@@ -207,9 +216,10 @@ class Trainer:
         self.model = model
         self.target_model = target_model
         self.device = device
-        self.model.half().to(self.device)
-
-        self.target_model.half().to(self.device)
+        self.model.to(self.device)
+        
+        self.target_model.to(self.device)
+        
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.optimzer = optimzer
@@ -218,32 +228,44 @@ class Trainer:
         self.attack.model = self.target_model
         self.attack.loss = yolox_loss
         self.attack.target_generator = yolox_target_generator
+        self.best_val_loss = math.inf
 
     def train_epoch(self,epoch):
         print(f"Now training epoch {epoch}")
         self.model.train()
         train_loss = 0.0
         for i, (images,perturbed_images) in enumerate(self.train_loader):
-            # print(f"Training on batch number {i} of {len(self.train_loader)}")
-            images = images.half()
-            images = images.to(self.device)
-            perturbed_images = perturbed_images.half()
-            perturbed_images = perturbed_images.to(self.device)
+            print(f"Training on batch number {i} of {len(self.train_loader)}")
+            #images = images.half()
+            #perturbed_images = perturbed_images.half()
             
             # perturbed_images = self.attack.generate_attack(images)
             
-            self.optimzer.zero_grad()
-            hgd_outputs = self.model(perturbed_images)
-            self.target_model.eval()
-            # with torch.no_grad():
-            denoised_images = perturbed_images - hgd_outputs
+            self.optimzer.zero_grad(set_to_none=True)
+            with torch.autocast('cuda'):
+                images = images.to(self.device)
+
+                perturbed_images = perturbed_images.to(self.device)
+
+                hgd_outputs = self.model(perturbed_images)
+            
+
+                self.target_model.eval()
+                # with torch.no_grad():
+                denoised_images = perturbed_images - hgd_outputs
+
+
             target_model_outputs = self.target_model(denoised_images)
+            
             with torch.no_grad():
                 target_model_targets = self.target_model(images)
-                #target_model_targets = torch.randn(target_model_outputs.shape).half().to(self.device)
+                    #target_model_targets = torch.randn(target_model_outputs.shape).half().to(self.device)
             
-            loss = self.criterion(target_model_outputs, target_model_targets)
+            with torch.autocast('cuda'):
+                loss = self.criterion(target_model_outputs, target_model_targets)
+            
             loss.backward()
+            
             self.optimzer.step()
             train_loss += loss.item() * images.size(0)
         epoch_train_loss = train_loss / len(self.train_loader.dataset)
@@ -255,20 +277,40 @@ class Trainer:
         self.model.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for i, (inputs, targets) in enumerate(self.val_loader):
-                outputs = self.model(inputs)
-                loss = self.criterion(outputs, targets)
-                val_loss += loss.item() * inputs.size(0)
+            for i, (images, perturbed_images) in enumerate(self.val_loader):
+                print(f"Validating for batch number {i} of {len(self.val_loader)}")
+                with torch.autocast('cuda'):
+                    images = images.to(self.device)
+                    perturbed_images = perturbed_images.to(self.device)
+                    hgd_outputs = self.model(perturbed_images)
+                    hgd_outputs = hgd_outputs.type(torch.float32)
+                    # print(f"images: {images.dtype}")
+                    # print(f"perturbed_images: {perturbed_images.dtype}")
+                    # print(f"hgd_outputs: {hgd_outputs.dtype}")
+                    denoised_images = perturbed_images - hgd_outputs
+                    target_model_outputs = self.target_model(denoised_images)
+                    target_model_targets = self.target_model(images)
+
+                    loss = self.criterion(target_model_outputs, target_model_targets)
+                    val_loss += loss.item() * images.size(0)
             epoch_val_loss = val_loss / len(self.val_loader.dataset)
+        print(f'Validation for epoch number {epoch} resulted in epoch_val_loss = {epoch_val_loss}')
+        if (epoch_val_loss < self.best_val_loss):
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimzer.state_dict(),
+                'loss': epoch_val_loss,
+            },"best_ckpt.pt")
         return epoch_val_loss
 
     def train(self, n_epochs):
         train_losses = []
         val_losses = []
         for epoch in range(n_epochs):
-            print(f"Now running epoch {epoch} of {n_epochs}")
             epoch_train_loss = self.train_epoch(epoch)
             epoch_val_loss = self.val_epoch(epoch)
+            print(f"Epoch number {epoch}/{n_epochs}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
             train_losses.append(epoch_train_loss)
             val_losses.append(epoch_val_loss)
             print(f"Epoch {epoch + 1}/{n_epochs},"
@@ -282,6 +324,7 @@ class Trainer:
     
 if __name__ == "__main__":
     from torchsummary import summary
+    
     # hgd = HGD()
     # print(sum(p.numel() for p in hgd.parameters() if p.requires_grad))
     
@@ -316,8 +359,8 @@ if __name__ == "__main__":
     
 
     
-    train_dataloader = DataLoader(train_dataset,batch_size=4, shuffle=True,pin_memory=False)
-    val_dataloader = DataLoader(val_dataset,batch_size=4, shuffle=True,pin_memory=False)
+    train_dataloader = DataLoader(train_dataset,batch_size= 4, shuffle=True,pin_memory=True)
+    val_dataloader = DataLoader(val_dataset,batch_size= 4, shuffle=True,pin_memory=True)
 
     
     
@@ -325,15 +368,13 @@ if __name__ == "__main__":
 
     # for itemidx in range(len(train_dataset)):
     #     train_dataset.__getitem__(itemidx)
-    # print("done")
-    #print(train_dataset.__getitem__(1))
-    #print(test_dataset.__getitem__(1))
-    # TODO: Do the loaders stuff
+
+    
     target_model = get_model(device)
-    # for parameter in model.parameters():
-    #     print(parameter)
-    optimizer = optim.Adam(model.parameters(),lr= 0.001)
+
+    optimizer = optim.SGD(model.parameters(),lr= 1e-3,momentum=0.9)
     trainer = Trainer(model,target_model,train_dataloader, val_dataloader, device,optimizer, criterion= ExperimentalLoss())
-    #print(model)
-    trainer.train(1)
+
+    trainer.train(50)
+    # trainer.val_epoch(0)
     
