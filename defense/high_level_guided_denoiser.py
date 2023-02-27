@@ -302,6 +302,7 @@ class Trainer:
                 'optimizer_state_dict': self.optimzer.state_dict(),
                 'loss': epoch_val_loss,
             },"best_ckpt.pt")
+            self.best_val_loss = epoch_val_loss
         return epoch_val_loss
 
     def train(self, n_epochs):
