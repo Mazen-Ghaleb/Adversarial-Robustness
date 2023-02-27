@@ -129,10 +129,11 @@ class Fuse(nn.Module):
         return result_image 
 
 class COCODataset(data.Dataset):
-    def __init__(self, root_dir,annotaiton_file, transforms=None):
+    def __init__(self, root_dir,annotaiton_file, attacked_images_path, transforms=None):
         self.coco = COCO(annotaiton_file)
         self.root_dir = root_dir
         self.transofms = transforms
+        self.attacked_images_path = attacked_images_path
         self.ids = list(sorted(self.coco.imgs.keys()))
 
     def __len__(self):
@@ -154,11 +155,14 @@ class COCODataset(data.Dataset):
         #     print("True")
         # ann_ids = coco.getAnnIds(imgIds=img_id)
         # anns = coco.loadAnns(ann_ids)
-        anns = img_info['file_name']
+        
+        attacked_image_path = os.path.join(self.attacked_images_path,img_info['file_name'])
+        attacked_image = cv2.imread(attacked_image_path).transpose((2,0,1))
 
+          
         if self.transofms is not None:
-            img, anns = self.transofms(img, anns)
-        return img, anns
+            img, attacked_image = self.transofms(img, attacked_image)
+        return img, attacked_image
 
 class ExperimentalLoss(nn.Module):
     def __init__(self):
@@ -215,30 +219,39 @@ class Trainer:
         self.attack.loss = yolox_loss
         self.attack.target_generator = yolox_target_generator
 
-    def train_epoch(self):
+    def train_epoch(self,epoch):
+        print(f"Now training epoch {epoch}")
         self.model.train()
         train_loss = 0.0
-        for i, (images,_) in enumerate(self.train_loader):
+        for i, (images,perturbed_images) in enumerate(self.train_loader):
+            # print(f"Training on batch number {i} of {len(self.train_loader)}")
             images = images.half()
             images = images.to(self.device)
+            perturbed_images = perturbed_images.half()
+            perturbed_images = perturbed_images.to(self.device)
             
-            perturbed_images = self.attack.generate_attack(images)
+            # perturbed_images = self.attack.generate_attack(images)
+            
             self.optimzer.zero_grad()
             hgd_outputs = self.model(perturbed_images)
-            self.target_model.train()
+            self.target_model.eval()
             # with torch.no_grad():
             denoised_images = perturbed_images - hgd_outputs
             target_model_outputs = self.target_model(denoised_images)
-            target_model_targets = self.target_model(images)
-                
+            with torch.no_grad():
+                target_model_targets = self.target_model(images)
+                #target_model_targets = torch.randn(target_model_outputs.shape).half().to(self.device)
+            
             loss = self.criterion(target_model_outputs, target_model_targets)
             loss.backward()
             self.optimzer.step()
             train_loss += loss.item() * images.size(0)
         epoch_train_loss = train_loss / len(self.train_loader.dataset)
+        print(f"Training for epoch number {epoch} resulted in epoch_train_loss = {epoch_train_loss}")
         return epoch_train_loss
 
-    def val_epoch(self):
+    def val_epoch(self,epoch):
+        print(f'Running Validation for epoch {epoch}')
         self.model.eval()
         val_loss = 0.0
         with torch.no_grad():
@@ -253,8 +266,9 @@ class Trainer:
         train_losses = []
         val_losses = []
         for epoch in range(n_epochs):
-            epoch_train_loss = self.train_epoch()
-            epoch_val_loss = self.val_epoch()
+            print(f"Now running epoch {epoch} of {n_epochs}")
+            epoch_train_loss = self.train_epoch(epoch)
+            epoch_val_loss = self.val_epoch(epoch)
             train_losses.append(epoch_train_loss)
             val_losses.append(epoch_val_loss)
             print(f"Epoch {epoch + 1}/{n_epochs},"
@@ -294,15 +308,16 @@ if __name__ == "__main__":
     
 
     dataset_path = os.path.join(os.path.dirname(os.getcwd()),'model','datasets','tsinghua_gtsdb_speedlimit')
+    attacked_images_path = os.path.join(os.path.dirname(os.getcwd()),'model','datasets','attacked_images')
     annotations_path = os.path.join(dataset_path,'annotations')
-    train_dataset = COCODataset(os.path.join(dataset_path,'train2017'),os.path.join(annotations_path,'train2017.json'))
+    train_dataset = COCODataset(os.path.join(dataset_path,'train2017'),os.path.join(annotations_path,'train2017.json'),os.path.join(attacked_images_path,'train'))
     # test_dataset = COCODataset(os.path.join(dataset_path,'test2017'),os.path.join(annotations_path,'test2017.json'))
-    val_dataset = COCODataset(os.path.join(dataset_path,'val2017'),os.path.join(annotations_path,'val2017.json'))
+    val_dataset = COCODataset(os.path.join(dataset_path,'val2017'),os.path.join(annotations_path,'val2017.json'),os.path.join(attacked_images_path,'val'))
     
 
     
-    train_dataloader = DataLoader(train_dataset,batch_size=1,shuffle=True,pin_memory=True)
-    val_dataloader = DataLoader(val_dataset,batch_size=1,shuffle=True,pin_memory=True)
+    train_dataloader = DataLoader(train_dataset,batch_size=4, shuffle=True,pin_memory=False)
+    val_dataloader = DataLoader(val_dataset,batch_size=4, shuffle=True,pin_memory=False)
 
     
     
