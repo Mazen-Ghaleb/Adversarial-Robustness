@@ -13,7 +13,9 @@ from torch.utils.data import DataLoader
 from model.custom_yolo import yolox_loss, yolox_target_generator
 from model.speed_limit_detector import get_model
 from attack.fgsm import FGSM
+from torch.utils.checkpoint import checkpoint
 import math
+from tqdm import tqdm
 
 
 """
@@ -83,6 +85,7 @@ class C(nn.Module):
         x = self.conv(x)
         x = self.bn(x)
         x = self.relu(x)
+        #x = checkpoint(self.relu,x)
         return x
 
 class C2(nn.Module):
@@ -175,11 +178,10 @@ class ExperimentalLoss(nn.Module):
         
         denoised_output = denoised_output.type(torch.float32)
         benign_output = benign_output.type(torch.float32)
-        # print(f"denoised output {denoised_output.dtype}")
-        # print(f"benign output {benign_output.dtype}")
-        loss = torch.linalg.norm(denoised_output-benign_output,dim=(1,2),ord=2).mean()
-
-        #print(f"loss {loss}")
+        
+        
+        loss = torch.linalg.norm((denoised_output-benign_output),dim=(1,2),ord=2).mean()
+        #print(f"loss: {loss}")
         return loss
 
 class Preprocessor:    
@@ -234,12 +236,7 @@ class Trainer:
         print(f"Now training epoch {epoch}")
         self.model.train()
         train_loss = 0.0
-        for i, (images,perturbed_images) in enumerate(self.train_loader):
-            print(f"Training on batch number {i} of {len(self.train_loader)}")
-            #images = images.half()
-            #perturbed_images = perturbed_images.half()
-            
-            # perturbed_images = self.attack.generate_attack(images)
+        for i, (images,perturbed_images) in enumerate(tqdm(self.train_loader)):
             
             self.optimzer.zero_grad(set_to_none=True)
             with torch.autocast('cuda'):
@@ -256,10 +253,10 @@ class Trainer:
 
 
             target_model_outputs = self.target_model(denoised_images)
-            
             with torch.no_grad():
                 target_model_targets = self.target_model(images)
                     #target_model_targets = torch.randn(target_model_outputs.shape).half().to(self.device)
+            #target_model_outputs = torch.randn(target_model_targets.shape).to(self.device)
             
             with torch.autocast('cuda'):
                 loss = self.criterion(target_model_outputs, target_model_targets)
@@ -277,8 +274,7 @@ class Trainer:
         self.model.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for i, (images, perturbed_images) in enumerate(self.val_loader):
-                print(f"Validating for batch number {i} of {len(self.val_loader)}")
+            for i, (images, perturbed_images) in enumerate(tqdm(self.val_loader)):
                 with torch.autocast('cuda'):
                     images = images.to(self.device)
                     perturbed_images = perturbed_images.to(self.device)
@@ -296,12 +292,7 @@ class Trainer:
             epoch_val_loss = val_loss / len(self.val_loader.dataset)
         print(f'Validation for epoch number {epoch} resulted in epoch_val_loss = {epoch_val_loss}')
         if (epoch_val_loss < self.best_val_loss):
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': self.model.state_dict(),
-                'optimizer_state_dict': self.optimzer.state_dict(),
-                'loss': epoch_val_loss,
-            },"best_ckpt.pt")
+            torch.save(self.model.state_dict(),"best_ckpt.pt")
             self.best_val_loss = epoch_val_loss
         return epoch_val_loss
 
@@ -320,6 +311,13 @@ class Trainer:
         return train_losses, val_losses 
 
 
+def get_HGD_model(device):
+    dir_relative_path = os.path.relpath(os.path.dirname(__file__), os.getcwd())
+    # get the path of the model and the expirement script
+    model_path = os.path.join(dir_relative_path, "best_ckpt.pt")
+    model = HGD()
+    model.load_state_dict(torch.load(model_path)['model_state_dict'])
+    return model.to(device)
 
 
     
@@ -359,9 +357,9 @@ if __name__ == "__main__":
     val_dataset = COCODataset(os.path.join(dataset_path,'val2017'),os.path.join(annotations_path,'val2017.json'),os.path.join(attacked_images_path,'val'))
     
 
-    
-    train_dataloader = DataLoader(train_dataset,batch_size= 4, shuffle=True,pin_memory=True)
-    val_dataloader = DataLoader(val_dataset,batch_size= 4, shuffle=True,pin_memory=True)
+    batch_size = 4
+    train_dataloader = DataLoader(train_dataset,batch_size= batch_size, shuffle=True,pin_memory=True)
+    val_dataloader = DataLoader(val_dataset,batch_size= batch_size, shuffle=True,pin_memory=True)
 
     
     
@@ -373,7 +371,7 @@ if __name__ == "__main__":
     
     target_model = get_model(device)
 
-    optimizer = optim.SGD(model.parameters(),lr= 1e-3,momentum=0.9)
+    optimizer = optim.SGD(model.parameters(),lr= 1e-5,momentum=0.9)
     trainer = Trainer(model,target_model,train_dataloader, val_dataloader, device,optimizer, criterion= ExperimentalLoss())
 
     trainer.train(50)
