@@ -5,6 +5,7 @@ import os
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import json 
+import numpy as np
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = get_model(device)
@@ -31,40 +32,36 @@ if __name__ == "__main__":
         dataset_path, 'val2017'), os.path.join(annotations_path, 'val2017.json'))
     val_dataloader = DataLoader(val_dataset, batch_size=1, pin_memory=True)
 
-    train_outputs = {}
-    test_outputs = {}
-    val_outputs = {}
+    print("Dumping test output")
     
     for i, (inputs,targets) in enumerate(tqdm(test_dataloader)):
         with torch.no_grad():
             inputs = inputs.to(device)
-            test_outputs[targets[0]] = model(inputs)[0].cpu().numpy().tolist()
+            outputs = model(inputs)[0].cpu().numpy()
+            f = os.path.join(datasets_path, 'model_outputs',
+                                    'test', f"{targets[0].split('.')[0]}.npy")
+            np.save(f, outputs)
     
-    print("Dumping test to JSON")
-
-    with open(os.path.join(datasets_path, 'model_outputs', 'test','test_outputs.json'),"w") as f:
-        json.dump(test_outputs,f)      
+    print("Dumping val output")
 
     for i, (inputs,targets) in enumerate(tqdm(val_dataloader)):
         with torch.no_grad():
             inputs = inputs.to(device)
-            val_outputs[targets[0]] = model(inputs)[0].cpu().numpy().tolist()
+            outputs = model(inputs)[0].cpu().numpy()
+            f = os.path.join(datasets_path, 'model_outputs',
+                                    'val', f"{targets[0].split('.')[0]}.npy")
+            np.save(f, outputs)
 
 
-    print("Dumping test to JSON")
-    
-    with open(os.path.join(datasets_path, 'model_outputs', 'val','val_outputs.json'),"w") as f:
-        json.dump(val_outputs,f)
+    print("Dumping train output")
     
     for i, (inputs,targets) in enumerate(tqdm(train_dataloader)):
         with torch.no_grad():
             inputs = inputs.to(device)
-            train_outputs[targets[0]] = model(inputs)[0].cpu().numpy().tolist()
-        
-    print("Dumping train to JSON")
-    
-    with open(os.path.join(datasets_path, 'model_outputs', 'train','train_outputs.json'),"w") as f:
-        json.dump(train_outputs,f)
+            outputs = model(inputs)[0].cpu().numpy().tolist()
+            f = os.path.join(datasets_path, 'model_outputs',
+                                    'train', f"{targets[0].split('.')[0]}.npy")
+            np.save(f, outputs)
 
 
     
