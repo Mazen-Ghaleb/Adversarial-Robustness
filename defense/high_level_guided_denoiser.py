@@ -16,7 +16,7 @@ from torch.utils.checkpoint import checkpoint
 import math
 from tqdm import tqdm
 from torchviz import make_dot
-
+from yolox.models import IOUloss
 
 """
     implementation for high-level representation guided denoiser from
@@ -26,6 +26,7 @@ class HGD(nn.Module):
     def __init__(self, in_channels=3, width=1) -> None:
         super(HGD, self).__init__()
         ## forward_path
+        
         self.forward_c2 = C2(in_channels = in_channels, out_channels=int(64 * width), kernel_size=3)
         self.forward_c3_1 = C3(in_channels=int(64 * width), out_channels=int(128 * width), kernel_size=3)
         self.forward_c3_2 = C3(in_channels=int(128 * width), out_channels=int(256 * width), kernel_size=3)
@@ -79,7 +80,7 @@ class C(nn.Module):
         super(C, self).__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding,bias=False)
         self.bn = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU()
+        self.relu = nn.ReLU(inplace=True)
 
     def forward(self,  x):
         x = self.conv(x)
@@ -174,12 +175,19 @@ class COCODataset(data.Dataset):
 class ExperimentalLoss(nn.Module):
     def __init__(self):
         super(ExperimentalLoss,self).__init__()
+        self.iou = IOUloss()
 
     def forward(self,denoised_output,benign_output):
         
         denoised_output = denoised_output.type(torch.float32)
         benign_output = benign_output.type(torch.float32)
-        
+        #cls_loss = F.binary_cross_entropy(denoised_output[:,:,5:],benign_output[:,:,5:]).sum()
+        #obj_loss = F.binary_cross_entropy(denoised_output[:,:,4:5],benign_output[:,:,4:5]).sum()
+        #combined_loss = torch.linalg.norm(denoised_output[:,:,4:] - benign_output[:,:,4:],dim=(1,2),ord=1).mean()
+        # iou_loss = self.iou(denoised_output[:,:,:4],benign_output[:,:,:4]).mean()
+        #loss = combined_loss
+        denoised_output[:,:,:4] = denoised_output[:,:,:4]/640
+        benign_output[:,:,:4] = benign_output[:,:,:4]/640
         
         loss = torch.linalg.norm((denoised_output-benign_output),dim=(1,2),ord=2).mean()
         return loss
@@ -231,7 +239,6 @@ class Trainer:
         self.model.to(self.device)
         
         self.target_model.to(self.device)
-        
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.optimizer = optimizer
@@ -287,11 +294,12 @@ class Trainer:
             self.optimizer.zero_grad(set_to_none=True)
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
-
+            self.scaler.update()
             
             pbar.set_description(f"Training Loss: {loss.item():.4f}")
             # self.optimzer.step()
             train_loss += loss.item() * target_model_targets.size(0)
+        
         epoch_train_loss = train_loss / len(self.train_loader.dataset)
         print(f"Training for epoch number {epoch} resulted in epoch_train_loss = {epoch_train_loss}")
         return epoch_train_loss
@@ -303,11 +311,12 @@ class Trainer:
         with torch.no_grad():
             pbar = tqdm(self.val_loader)
             for i, (perturbed_images, target_model_targets) in enumerate(pbar):
-                with torch.cuda.amp.autocast(enable=self.fp16):
-                    model_outputs = model_outputs.to(self.data_type).to(self.device)
+                with torch.cuda.amp.autocast(enabled=self.fp16):
+                    target_model_targets = target_model_targets.to(self.data_type).to(self.device)
                     perturbed_images = perturbed_images.to(self.data_type).to(self.device)
                     hgd_outputs = self.model(perturbed_images)
-                    hgd_outputs = hgd_outputs.type(torch.float32)
+                    
+                    #hgd_outputs = hgd_outputs.type(torch.float32)
                     denoised_images = perturbed_images - hgd_outputs
                     target_model_outputs = self.target_model(denoised_images)
                     loss = self.criterion(target_model_outputs, target_model_targets)
@@ -384,10 +393,11 @@ if __name__ == "__main__":
         os.path.join(attacked_images_path,'val'))
     
 
-    batch_size = 8
-    train_dataloader = DataLoader(train_dataset,batch_size= batch_size,
+    batch_size_train = 8
+    batch_size_val = 16
+    train_dataloader = DataLoader(train_dataset,batch_size= batch_size_train,
                                    shuffle=True,pin_memory=True)
-    val_dataloader = DataLoader(val_dataset,batch_size= batch_size,
+    val_dataloader = DataLoader(val_dataset,batch_size= batch_size_val,
                                  shuffle=True,pin_memory=True)
 
     
@@ -401,7 +411,7 @@ if __name__ == "__main__":
     target_model = get_model(device)
 
     # optimizer = optim.SGD(model.parameters(),lr= 1e-5,momentum=0.9)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = optim.Adam(model.parameters(), lr=1e-2)
     trainer = Trainer(
         model,
         target_model,
@@ -409,8 +419,8 @@ if __name__ == "__main__":
         val_dataloader,
         device,optimizer,
         criterion= ExperimentalLoss(),
-        fp16=False)
+        fp16=True)
 
-    trainer.train(50)
+    trainer.train(100)
     # trainer.val_epoch(0)
     
