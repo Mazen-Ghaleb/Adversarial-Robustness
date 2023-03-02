@@ -15,6 +15,7 @@ from attack.fgsm import FGSM
 from torch.utils.checkpoint import checkpoint
 import math
 from tqdm import tqdm
+from torchviz import make_dot
 
 
 """
@@ -22,29 +23,29 @@ from tqdm import tqdm
     https://openaccess.thecvf.com/content_cvpr_2018/html/Liao_Defense_Against_Adversarial_CVPR_2018_paper.html
 """
 class HGD(nn.Module):
-    def __init__(self, in_channels=3) -> None:
+    def __init__(self, in_channels=3, width=1) -> None:
         super(HGD, self).__init__()
         ## forward_path
-        self.forward_c2 = C2(2, in_channels = in_channels, out_channels=64, kernel_size=3)
-        self.forward_c3_1 = C3(3, in_channels=64, out_channels=128, kernel_size=3)
-        self.forward_c3_2 = C3(3, in_channels=128, out_channels=256, kernel_size=3)
-        self.forward_c3_3 = C3(3, in_channels=256, out_channels=256, kernel_size=3)
-        self.forward_c3_4 = C3(3, in_channels=256, out_channels=256, kernel_size=3)
+        self.forward_c2 = C2(in_channels = in_channels, out_channels=int(64 * width), kernel_size=3)
+        self.forward_c3_1 = C3(in_channels=int(64 * width), out_channels=int(128 * width), kernel_size=3)
+        self.forward_c3_2 = C3(in_channels=int(128 * width), out_channels=int(256 * width), kernel_size=3)
+        self.forward_c3_3 = C3(in_channels=int(256 * width), out_channels=int(256 * width), kernel_size=3)
+        self.forward_c3_4 = C3(in_channels=int(256 * width), out_channels=int(256 * width), kernel_size=3)
 
         #backward path
         self.backward_fuse = Fuse()
-        self.backward_c3_1 = C3(3, in_channels=512, out_channels=256, kernel_size=3)
+        self.backward_c3_1 = C3(in_channels=int(512* width), out_channels=int(256 * width), kernel_size=3)
 
         # self.backward_fuse_2 = Fuse()
-        self.backward_c3_2 = C3(3, in_channels=512, out_channels=256, kernel_size=3)
+        self.backward_c3_2 = C3(in_channels=int(512 * width), out_channels=int(256 * width), kernel_size=3)
 
         # self.backward_fuse_3 = Fuse()
-        self.backward_c3_3 = C3(3, in_channels=384, out_channels=128, kernel_size=3)
+        self.backward_c3_3 = C3(in_channels=int(384 * width), out_channels=int(128 * width), kernel_size=3)
 
         # self.backward_fuse_4 = Fuse()
-        self.backward_c2 = C2(2, in_channels=192, out_channels=64, kernel_size=3)
+        self.backward_c2 = C2(in_channels=int(192 * width), out_channels=int(64 * width), kernel_size=3)
         
-        self.conv = nn.Conv2d(in_channels=64, out_channels=3, kernel_size=1, stride=1)
+        self.conv = nn.Conv2d(in_channels=int(64 * width), out_channels=3, kernel_size=1, stride=1)
 
     def forward(self, x) -> None:
         #forward path
@@ -88,7 +89,7 @@ class C(nn.Module):
         return x
 
 class C2(nn.Module):
-    def __init__(self, k, in_channels, out_channels, kernel_size) -> None:
+    def __init__(self, in_channels, out_channels, kernel_size) -> None:
         super(C2, self).__init__()
         self.c_blocks = nn.Sequential(
             C(in_channels, out_channels, kernel_size),
@@ -99,7 +100,7 @@ class C2(nn.Module):
         return self.c_blocks(x)
 
 class C3(nn.Module):
-    def __init__(self, k, in_channels, out_channels, kernel_size) -> None:
+    def __init__(self, in_channels, out_channels, kernel_size) -> None:
         super(C3, self).__init__()
         self.c_blocks = nn.Sequential(
             C(in_channels, out_channels, kernel_size, stride=2),
@@ -220,7 +221,7 @@ class Trainer:
             train_loader,
             val_loader,
             device,
-            optimzer,
+            optimizer,
             criterion,
             fp16=True
             ) -> None:
@@ -233,7 +234,7 @@ class Trainer:
         
         self.train_loader = train_loader
         self.val_loader = val_loader
-        self.optimzer = optimzer
+        self.optimizer = optimizer
         self.criterion = criterion
         self.attack = FGSM()
         self.attack.model = self.target_model
@@ -243,6 +244,22 @@ class Trainer:
         self.fp16 = fp16
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16)
         self.data_type = torch.float16 if self.fp16 else torch.float32
+        self.__disable_target_model_wieghts_grad()
+
+    def __disable_target_model_wieghts_grad(self):
+        for parameter in self.target_model.parameters():
+            parameter.requires_grad = False
+
+    def __print_params_grad(self):
+        for name, parameter in self.target_model.named_parameters():
+            print(name, parameter.requires_grad)
+
+        for name, parameter in self.model.named_parameters():
+            print(name, parameter.requires_grad)
+
+    def __visualize(self, value, parameters, name, format="pdf"):
+        dot = make_dot(value, parameters)
+        dot.render(name, format=format)
 
     def train_epoch(self,epoch):
         print(f"Now training epoch {epoch}")
@@ -260,8 +277,6 @@ class Trainer:
                 denoised_images = perturbed_images - hgd_outputs
                 target_model_outputs = self.target_model(denoised_images)
                 loss = self.criterion(target_model_outputs, target_model_targets)
-            
-
 
             # with torch.no_grad():
             #     target_model_targets = self.target_model(images)
@@ -269,12 +284,12 @@ class Trainer:
             #target_model_outputs = torch.randn(target_model_targets.shape).to(self.device)
             
             
-            pbar.set_description(f"Training Loss: {loss.item():.4f}")
-            self.optimzer.zero_grad(set_to_none=True)
+            self.optimizer.zero_grad(set_to_none=True)
             self.scaler.scale(loss).backward()
-            self.scaler.scale(self.optimzer).step()
+            self.scaler.step(self.optimizer)
 
             
+            pbar.set_description(f"Training Loss: {loss.item():.4f}")
             # self.optimzer.step()
             train_loss += loss.item() * target_model_targets.size(0)
         epoch_train_loss = train_loss / len(self.train_loader.dataset)
@@ -295,8 +310,8 @@ class Trainer:
                     hgd_outputs = hgd_outputs.type(torch.float32)
                     denoised_images = perturbed_images - hgd_outputs
                     target_model_outputs = self.target_model(denoised_images)
-                    pbar.set_description(f"Validation Loss: {loss.item():.4f}")
                     loss = self.criterion(target_model_outputs, target_model_targets)
+                    pbar.set_description(f"Validation Loss: {loss.item():.4f}")
                     val_loss += loss.item() * target_model_targets.size(0)
             epoch_val_loss = val_loss / len(self.val_loader.dataset)
         print(f'Validation for epoch number {epoch} resulted in epoch_val_loss = {epoch_val_loss}')
@@ -335,24 +350,17 @@ if __name__ == "__main__":
     
     # print(sum(p.numel() for p in hgd.parameters() if p.requires_grad))
     
-    model = HGD()
+    model = HGD(width=0.5)
     model.eval()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     from prettytable import PrettyTable
 
-    def count_parameters(model):
-        table = PrettyTable(["Modules", "Parameters"])
-        total_params = 0
-        for name, parameter in model.named_parameters():
-            if not parameter.requires_grad: continue
-            params = parameter.numel()
-            table.add_row([name, params])
-            total_params+=params
-        print(table)
-        print(f"Total Trainable Params: {total_params}")
-        return total_params
-    #count_parameters(model)
+    def count_parameters(model, input_size):
+        from torchsummary import summary
+        summary(model, input_size)
+    # count_parameters(model, (3, 640, 640))
+    # count_parameters(model, (3, 224, 224))
     
     
     
@@ -376,7 +384,7 @@ if __name__ == "__main__":
         os.path.join(attacked_images_path,'val'))
     
 
-    batch_size = 4
+    batch_size = 8
     train_dataloader = DataLoader(train_dataset,batch_size= batch_size,
                                    shuffle=True,pin_memory=True)
     val_dataloader = DataLoader(val_dataset,batch_size= batch_size,
@@ -393,7 +401,7 @@ if __name__ == "__main__":
     target_model = get_model(device)
 
     # optimizer = optim.SGD(model.parameters(),lr= 1e-5,momentum=0.9)
-    optimizer = optim.Adam(model.parameters(), lr=1e-5)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
     trainer = Trainer(
         model,
         target_model,
@@ -401,9 +409,7 @@ if __name__ == "__main__":
         val_dataloader,
         device,optimizer,
         criterion= ExperimentalLoss(),
-        fp16=False
-        ,
-        )
+        fp16=False)
 
     trainer.train(50)
     # trainer.val_epoch(0)
