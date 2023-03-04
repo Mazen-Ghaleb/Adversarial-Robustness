@@ -363,14 +363,14 @@ def calculate_attack(world: World, image):
         world.attack_model_confidence = world.attack_model_result[1][0]
         world.attack_model_image = drawBoundingBox(world.attack_model_result[2], image, world.attack_model_result[0], world.attack_model_result[1])
         
-        print("{:<25}".format("{} Attack Model time".format(world.attack_methods[world.attack_currentMethodIndex][1])),
+        print("{:<25}".format("{} Attack Model time".format(world.attack_methods[world.attack_currentMethodIndex])),
         ": {:.3f}s".format(timer()-attack_start),
         "Label:{:<3} Confidence:{:.3f}".format(int(world.attack_model_speed), world.attack_model_confidence))
     else:
         world.attack_model_speed = None
         world.attack_model_confidence = None
         world.attack_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
-        print("{:<25}".format("{} Attack Model time".format(world.attack_methods[world.attack_currentMethodIndex][1])),
+        print("{:<25}".format("{} Attack Model time".format(world.attack_methods[world.attack_currentMethodIndex])),
         ": {:.3f}s No Sign Detected".format(timer()-attack_start))
 
 def calculate_overrideSpeed(world, detectedSpeed):

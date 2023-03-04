@@ -49,7 +49,7 @@ from KeyboardControl import KeyboardControl
 from HUD import HUD
 from BBHUD import BBHUD
 from World import World
-from Demo import Demo 
+from demo import Demo 
 
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
