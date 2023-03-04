@@ -8,7 +8,7 @@ from attack.attack_base import AttackBase
 import torch.nn.functional as F
 from model.sign_classifier import classifier_loss, classifier_target_generator
 from model.custom_yolo import yolox_loss, yolox_target_generator
-
+from defense.high_level_guided_denoiser import get_HGD_model
 
 class Demo:
     def __init__(self) -> None:
@@ -22,6 +22,7 @@ class Demo:
         self.classifier = SignClassifier(self.device)
         self.classes = np.array([100, 120, 20, 30, 40, 15, 50, 60, 70, 80])
         self.attacks = {"FGSM": FGSM(), "IT-FGSM": ItFGSM()}
+        self.defenses = {"HGD": get_HGD_model(self.device)}
     
     def preprocess(self, image:np.ndarray):
         self.image = image
@@ -83,6 +84,31 @@ class Demo:
         classification_labels, classification_conf =  self.classifier.classify_signs(perturbed_cropped_signs)
         return self.classes[classification_labels], classification_conf, detection_boxes
 
+    def run_with_defense(self,defense_type, attack_type):
+        defense_model = self.defenses[defense_type]
+        
+        attack: AttackBase = self.attacks[attack_type]
+
+        images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
+
+        attack.model = self.detector.model
+        attack.loss = yolox_loss
+        attack.target_generator = yolox_target_generator
+        perturbed_images = attack.generate_attack(images)
+        
+        defense_model.eval()
+        with torch.no_grad():
+            denoised_images = perturbed_images - defense_model(perturbed_images)
+
+        detection_output = self.detector.get_model_output(denoised_images)[0]
+        detection_output = self.detector.decode_model_output(detection_output)
+
+        if detection_output is None:
+            return None
+        else:
+            return detection_output
+        #detection_label, detection_conf, detection_boxes = detection_output
+        
 # def yolox_loss(outputs, targets):
 #     loss_cls = F.binary_cross_entropy(outputs[:, :, 5:], targets[:, :, 5:])
 #     loss_objs = F.binary_cross_entropy(outputs[:, :, 4], targets[:, :, 4])
@@ -111,13 +137,17 @@ if __name__ == "__main__":
     import cv2
     test_imgs_path = os.path.join(os.path.dirname(__file__), "../test_imgs")
     test_imgs_path = os.path.relpath(test_imgs_path, os.getcwd())
-    img = cv2.imread(os.path.join(test_imgs_path, "test6.png"))
+    img = cv2.imread(os.path.join(test_imgs_path, "test.png"))
     demo = Demo()
     demo.preprocess(img)
     output = demo.run_without_attack()
     print("without attack: ")
     print(output[0], output[1], output[2])
-
+    output = demo.run_with_defense("HGD","FGSM")
+    print(output[0], output[1], output[2])
+    print("with attack: ")
+    output = demo.run_with_attack("FGSM")
+    print(output[0], output[1], output[2])
 
     # output = demo.run_with_attack("FGSM")
     # print("with fgsm attack: ")
