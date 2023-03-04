@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn 
-from torch.autograd import Variable
 import torch.nn.functional as F
 from pycocotools.coco import COCO
 import torch.utils.data as data
@@ -9,7 +8,6 @@ import cv2
 import torch.optim as optim
 import numpy as np
 from torch.utils.data import DataLoader
-from model.custom_yolo import yolox_loss, yolox_target_generator
 from model.speed_limit_detector import get_model
 from attack.fgsm import FGSM
 from torch.utils.checkpoint import checkpoint
@@ -17,6 +15,7 @@ import math
 from tqdm import tqdm
 from torchviz import make_dot
 from yolox.models import IOUloss
+from hgd import HGD as HGD2
 
 """
     implementation for high-level representation guided denoiser from
@@ -186,10 +185,12 @@ class ExperimentalLoss(nn.Module):
         #combined_loss = torch.linalg.norm(denoised_output[:,:,4:] - benign_output[:,:,4:],dim=(1,2),ord=1).mean()
         # iou_loss = self.iou(denoised_output[:,:,:4],benign_output[:,:,:4]).mean()
         #loss = combined_loss
-        denoised_output[:,:,:4] = denoised_output[:,:,:4]/640
-        benign_output[:,:,:4] = benign_output[:,:,:4]/640
+        mse_loss = F.mse_loss(benign_output[:, : , :4], denoised_output[:, :, :4])
+        # denoised_output[:,:,:4] = denoised_output[:,:,:4]/640
+        # benign_output[:,:,:4] = benign_output[:,:,:4]/640
         
-        loss = torch.linalg.norm((denoised_output-benign_output),dim=(1,2),ord=2).mean()
+        loss = torch.linalg.norm((denoised_output[:, :, 4:]-benign_output[:, :, 4:]),
+                                 dim=(1,2),ord=2).mean() + mse_loss
         return loss
 
 class Preprocessor:    
@@ -245,8 +246,6 @@ class Trainer:
         self.criterion = criterion
         self.attack = FGSM()
         self.attack.model = self.target_model
-        self.attack.loss = yolox_loss
-        self.attack.target_generator = yolox_target_generator
         self.best_val_loss = math.inf
         self.fp16 = fp16
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16)
@@ -359,7 +358,8 @@ if __name__ == "__main__":
     
     # print(sum(p.numel() for p in hgd.parameters() if p.requires_grad))
     
-    model = HGD(width=0.5)
+    # model = HGD(width=0.5)
+    model = HGD2(width=0.5, growth_rate=16, bn_size=2)
     model.eval()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -393,7 +393,7 @@ if __name__ == "__main__":
         os.path.join(attacked_images_path,'val'))
     
 
-    batch_size_train = 8
+    batch_size_train = 16
     batch_size_val = 16
     train_dataloader = DataLoader(train_dataset,batch_size= batch_size_train,
                                    shuffle=True,pin_memory=True)
@@ -419,7 +419,7 @@ if __name__ == "__main__":
         val_dataloader,
         device,optimizer,
         criterion= ExperimentalLoss(),
-        fp16=True)
+        fp16=False)
 
     trainer.train(100)
     # trainer.val_epoch(0)
