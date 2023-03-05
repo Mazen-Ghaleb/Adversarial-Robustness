@@ -184,7 +184,7 @@ class KeyboardControl(object):
                             world.hud.notification("{} Defense Sign detection disabled".format(world.defense_methods[world.defense_currentMethodIndex]))
                         else:
                             world.toggle_defense_model(True)
-                            world.hud.notification("{} Attack Sign detection enabled".format(world.defense_methods[world.defense_currentMethodIndex]))
+                            world.hud.notification("{} Defense Sign detection enabled".format(world.defense_methods[world.defense_currentMethodIndex]))
                     else:
                         world.hud.notification(
                             "Can't enable Defense Sign detection while Sign detection is disabled")

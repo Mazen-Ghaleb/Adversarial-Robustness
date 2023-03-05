@@ -73,8 +73,10 @@ Normal Controls
     T            : toggle vehicle's telemetry
     CTRL + R     : toggle recording of simulation (replacing any previous)
     CTRL + P     : start replaying last recorded simulation
-    CTRL + +     : increments the start time of the replay by 1 second (+SHIFT = 10 seconds)
-    CTRL + -     : decrements the start time of the replay by 1 second (+SHIFT = 10 seconds)
+    CTRL + +     : increments the start time of the replay by 1 second 
+                   (+SHIFT = 10 seconds)
+    CTRL + -     : decrements the start time of the replay by 1 second 
+                   (+SHIFT = 10 seconds)
     F1           : toggle HUD
     H/?          : toggle help
     K            : toggle model help
