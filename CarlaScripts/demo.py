@@ -22,34 +22,51 @@ class Demo:
         self.classifier = SignClassifier(self.device)
         self.classes = np.array([100, 120, 20, 30, 40, 15, 50, 60, 70, 80])
         self.attacks = {"FGSM": FGSM(), "IT-FGSM": ItFGSM()}
-        self.defenses = {"HGD": get_HGD_model(self.device)}
+        # self.defenses = {"HGD": get_HGD_model(self.device)}
+
+    def __crop_signs(self, detection_boxes):
+        delete_masks = []
+        cropped_signs = []
+        for i, box in enumerate(np.array(detection_boxes, dtype=np.int32)):
+            if np.any(box < 0, axis=None):
+                delete_masks.append(i)
+                continue
+            xmin, ymin, xmax, ymax = box
+            cropped_sign = self.image[ymin: ymax, xmin:xmax, :]
+            if cropped_sign.size == 0:
+                delete_masks.append(i)
+                continue
+            cropped_sign = self.classifier.preprocess(cropped_sign)
+            cropped_signs.append(cropped_sign)
+        
+        cropped_signs = np.asarray(cropped_signs)
+        detection_boxes = np.delete(detection_boxes, delete_masks, axis=0)
+        return cropped_signs, detection_boxes
+
     
     def preprocess(self, image:np.ndarray):
         self.image = image
         self.preprocessed_image = self.detector.preprocess(image)
 
-    def run_without_attack(self):
+    def run_without_attack(self, debug=False):
         images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
         detection_output = self.detector.get_model_output(images)[0]
         detection_output = self.detector.decode_model_output(detection_output)
+
         if detection_output is None:
             return None
-        detection_label, detection_conf, detection_boxes = detection_output
-        print(detection_label, detection_conf)
 
-        cropped_signs = []
-        for box in np.asarray(detection_boxes, dtype=int):
-            xmin, ymin, xmax, ymax = box
-            cropped_sign = self.classifier.preprocess(self.image[ymin:ymax, xmin: xmax, :])
-            cropped_signs.append(cropped_sign)
-        cropped_signs = np.asarray(cropped_signs)
-        
+        detection_label, detection_conf, detection_boxes = detection_output
+        if debug:
+            print(detection_label, detection_conf)
+
+        cropped_signs, detection_boxes = self.__crop_signs(detection_boxes)
         cropped_signs = torch.from_numpy(cropped_signs).float().to(self.device)
-        
         classification_labels, classification_conf =  self.classifier.classify_signs(cropped_signs)
+
         return self.classes[classification_labels], classification_conf, detection_boxes
     
-    def run_with_attack(self, attack_type):
+    def run_with_attack(self, attack_type, debug=False):
 
         attack: AttackBase = self.attacks[attack_type]
 
@@ -66,15 +83,12 @@ class Demo:
         if detection_output is None:
             return None
         detection_label, detection_conf, detection_boxes = detection_output
+        if debug:
+            print(detection_label, detection_conf)
 
-        cropped_signs = []
-        for box in np.asarray(detection_boxes, dtype=int):
-            xmin, ymin, xmax, ymax = box
-            cropped_sign = self.classifier.preprocess(self.image[ymin:ymax, xmin: xmax, :])
-            cropped_signs.append(cropped_sign)
-        cropped_signs = np.asarray(cropped_signs)
-
+        cropped_signs, detection_boxes = self.__crop_signs(detection_boxes)
         cropped_signs = torch.from_numpy(cropped_signs).float().to(self.device)
+
 
         attack.model = self.classifier.model
         attack.loss = classifier_loss
@@ -107,26 +121,6 @@ class Demo:
             return None
         else:
             return detection_output
-        #detection_label, detection_conf, detection_boxes = detection_output
-        
-# def yolox_loss(outputs, targets):
-#     loss_cls = F.binary_cross_entropy(outputs[:, :, 5:], targets[:, :, 5:])
-#     loss_objs = F.binary_cross_entropy(outputs[:, :, 4], targets[:, :, 4])
-#     return loss_cls.sum() + loss_objs.sum()
-
-# def yolox_target_generator(outputs):
-#     obj_threshold  = 0.5
-#     cls_threshold  = 0.5
-#     with torch.no_grad():
-#         objs_targets = (outputs[:, :, 4] > obj_threshold).float().unsqueeze(dim=2)
-#         cls_targets = (outputs[:, :, 5:] > cls_threshold).float()
-#         return torch.cat((outputs[:, :, :4], objs_targets, cls_targets), dim=2)
-
-# def classifier_target_generator(outputs):
-#     labels = outputs.argmax(1)
-#     targets = F.one_hot(labels, 10).float()
-#     return targets
-
 
     
 
@@ -143,10 +137,10 @@ if __name__ == "__main__":
     output = demo.run_without_attack()
     print("without attack: ")
     print(output[0], output[1], output[2])
-    output = demo.run_with_defense("HGD","FGSM")
-    print(output[0], output[1], output[2])
+    # output = demo.run_with_defense("HGD","FGSM")
+    # print(output[0], output[1], output[2])
     print("with attack: ")
-    output = demo.run_with_attack("FGSM")
+    output = demo.run_with_attack("IT-FGSM")
     print(output[0], output[1], output[2])
 
     # output = demo.run_with_attack("FGSM")
