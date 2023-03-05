@@ -46,13 +46,14 @@ except ImportError:
 # Variable imports
 from HelpText import helpText
 from HelpText import modelHelpText
+from World import initial_spawn_point
 
 # Class imports
 from KeyboardControl import KeyboardControl
 from HUD import HUD
 from BBHUD import BBHUD
 from World import World
-from demo import Demo 
+from demo import Demo
 
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
@@ -132,6 +133,12 @@ def game_loop(args):
         world.vehicle_camera = world.world.spawn_actor(
             camera_bp, camera_init_trans, attach_to=world.player)
 
+
+        if (world.agent is not None):    
+            # destination =carla.Transform(carla.Location(x=291.9, y=-2.1, z=2), carla.Rotation(yaw=180))
+            destination =carla.Location(x=291.9, y=-2.1, z=2) 
+            world.agent.set_destination(destination)
+                    
         while True:
             if args.sync:
                 sim_world.tick()
@@ -166,6 +173,21 @@ def game_loop(args):
                     # Display the Defense Image in window
                     cv2.imshow('Defense Image', cv2.cvtColor(world.defense_model_image, cv2.COLOR_BGR2RGB))
                     world.window_first_stats[2] = False
+            
+            if world.agent is not None:
+                if world.agent.done():
+                    if args.loop:
+                        world.restart(initial_spawn_point)
+                        world.agent.set_destination(destination)
+                        world.hud.notification("The target has been reached, resetting vehicle position", seconds=4.0)
+                        print("The target has been reached, resetting vehicle position")
+                    else:
+                        print("The target has been reached, stopping the simulation")
+                        break
+
+                control = world.agent.run_step()
+                control.manual_gear_shift = False
+                world.player.apply_control(control)
 
     finally:
 
@@ -218,8 +240,25 @@ def main():
     argparser.add_argument(
         '--filter',
         metavar='PATTERN',
-        default='vehicle.*',
-        help='actor filter (default: "vehicle.*")')
+        default='vehicle.lincoln.mkz_2020',
+        help='actor filter (default: "vehicle.lincoln.mkz_2020")')
+        # default='vehicle.*',
+        # help='actor filter (default: "vehicle.*")')
+    argparser.add_argument(
+        '-l', '--loop',
+        action='store_true',
+        dest='loop',
+        help='Sets a new random destination upon reaching the previous one (default: False)')
+    argparser.add_argument(
+        "--agent", type=str,
+        choices=["Behavior", "Basic", "None"],
+        help="select which agent to run",
+        default="None")
+    argparser.add_argument(
+        '-b', '--behavior', type=str,
+        choices=["cautious", "normal", "aggressive"],
+        help='Choose one of the possible agent behaviors (default: normal) ',
+        default='normal')
     argparser.add_argument(
         '--generation',
         metavar='G',

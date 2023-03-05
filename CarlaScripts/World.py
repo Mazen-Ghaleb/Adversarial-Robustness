@@ -35,6 +35,10 @@ from GnssSensor import GnssSensor
 from IMUSensor import IMUSensor
 from RadarSensor import RadarSensor
 from CameraManager import CameraManager
+from agents.navigation.behavior_agent import BehaviorAgent
+from agents.navigation.basic_agent import BasicAgent 
+
+initial_spawn_point = carla.Transform(carla.Location(x=396.4, y=67.2, z=2), carla.Rotation(yaw=270)) 
 
 # ==============================================================================
 # -- World ---------------------------------------------------------------------
@@ -58,6 +62,9 @@ class World(object):
         self.hud = hud
         self.bbhud = bbhud
         self.player = None
+        self.agent = None
+        self.agentMode = args.agent
+        self.agentBehavior = args.behavior
         self.collision_sensor = None
         self.lane_invasion_sensor = None
         self.gnss_sensor = None
@@ -69,7 +76,7 @@ class World(object):
         self._actor_filter = args.filter
         self._actor_generation = args.generation
         self._gamma = args.gamma
-        self.restart()
+        self.restart(initial_spawn_point)
         self.world.on_tick(hud.on_world_tick)
         self.recording_enabled = False
         self.recording_start = 0
@@ -140,7 +147,7 @@ class World(object):
         self.defense_model_image_window = not self.defense_model_image_window
         self.window_first_stats[2] = True
 
-    def restart(self):
+    def restart(self, spawn_point = None):
         """Restart the world"""
         self.player_max_speed = 1.589
         self.player_max_speed_fast = 3.713
@@ -170,10 +177,11 @@ class World(object):
 
         # Spawn the player.
         if self.player is not None:
-            spawn_point = self.player.get_transform()
-            spawn_point.location.z += 2.0
-            spawn_point.rotation.roll = 0.0
-            spawn_point.rotation.pitch = 0.0
+            if spawn_point is None:
+                spawn_point = self.player.get_transform()
+                spawn_point.location.z += 2.0
+                spawn_point.rotation.roll = 0.0
+                spawn_point.rotation.pitch = 0.0
             self.destroy()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.modify_vehicle_physics(self.player)
@@ -182,9 +190,10 @@ class World(object):
                 print('There are no spawn points available in your map/town.')
                 print('Please add some Vehicle Spawn Point to your UE4 scene.')
                 sys.exit(1)
-            spawn_points = self.map.get_spawn_points()
-            spawn_point = random.choice(
-                spawn_points) if spawn_points else carla.Transform()
+            if spawn_point is None:
+                spawn_points = self.map.get_spawn_points()
+                spawn_point = random.choice(
+                    spawn_points) if spawn_points else carla.Transform()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.modify_vehicle_physics(self.player)
         # Set up the sensors.
@@ -206,6 +215,17 @@ class World(object):
             self.world.tick()
         else:
             self.world.wait_for_tick()
+            
+        self.create_agent()
+        
+    def create_agent(self):
+        if self.agentMode != "None":
+            if self.agentMode == "Basic":
+                self.agent = BasicAgent(self.player)
+            else:
+                self.agent = BehaviorAgent(self.player, behavior= self.agentBehavior)
+            self.agent.ignore_traffic_lights(True)
+            self.agent.set_target_speed(15)
 
     def next_weather(self, reverse=False):
         """Get next weather setting"""
@@ -413,3 +433,4 @@ def calculate_overrideSpeed(world: World, detectedSpeed):
             print("{:<25}".format("Overriding the speed with"),": {:.3f} km/h".format(detectedSpeed))
             SpeedOfOverride = detectedSpeed /3.6
             world.player.enable_constant_velocity(carla.Vector3D(SpeedOfOverride, 0, 0))
+            

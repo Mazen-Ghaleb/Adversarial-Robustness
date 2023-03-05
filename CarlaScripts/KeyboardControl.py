@@ -168,8 +168,10 @@ class KeyboardControl(object):
                     if (world.model_flag):
                         world.toggle_model(False)
                         world.toggle_attack_model(False)
+                        world.toggle_defense_model(False)
                         world.model_image = np.zeros((640, 640, 3), dtype = np.uint8)
                         world.attack_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
+                        world.defense_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
                         world.hud.notification(
                             "Speed-limit Sign detection disabled")
                     else:
