@@ -1,4 +1,3 @@
-CarlaScripts
 attack
 defense
 model

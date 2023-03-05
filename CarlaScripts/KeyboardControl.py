@@ -42,6 +42,7 @@ try:
     from pygame.locals import K_h
     from pygame.locals import K_i
     from pygame.locals import K_j
+    from pygame.locals import K_k
     from pygame.locals import K_l
     from pygame.locals import K_m
     from pygame.locals import K_n
@@ -130,7 +131,9 @@ class KeyboardControl(object):
                 elif event.key == K_b:
                     world.load_map_layer()
                 elif event.key == K_h or (event.key == K_SLASH and pygame.key.get_mods() & KMOD_SHIFT):
-                    world.hud.help.toggle()
+                    world.hud.toggle_help()
+                elif event.key == K_k:
+                    world.hud.toggle_modelHelp()
                 elif event.key == K_TAB:
                     world.camera_manager.toggle_camera()
                 elif event.key == K_c and pygame.key.get_mods() & KMOD_SHIFT:

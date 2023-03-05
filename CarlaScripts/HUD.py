@@ -19,6 +19,10 @@ except ImportError:
     raise RuntimeError(
         'cannot import pygame, make sure pygame package is installed')
     
+# Variable imports
+from HelpText import helpText
+from HelpText import modelHelpText
+
 # Class Imports
 from HelpText import HelpText
 from FadingText import FadingText
@@ -38,7 +42,8 @@ class HUD(object):
         mono = pygame.font.match_font(mono)
         self._font_mono = pygame.font.Font(mono, 12 if os.name == 'nt' else 14)
         self._notifications = FadingText(font, (width, 40), (0, height - 40))
-        self.help = HelpText(pygame.font.Font(mono, 16), width, height)
+        self.help = HelpText(pygame.font.Font(mono, 16), width, height, helpText)
+        self.modelHelp = HelpText(pygame.font.Font(mono, 16), width, height, modelHelpText)
         self.server_fps = 0
         self.frame = 0
         self.simulation_time = 0
@@ -163,6 +168,16 @@ class HUD(object):
 
     def toggle_info(self):
         self._show_info = not self._show_info
+        
+    def toggle_help(self):
+        if (self.modelHelp._render):
+            self.modelHelp.toggle()
+        self.help.toggle()
+        
+    def toggle_modelHelp(self):
+        if (self.help._render):
+            self.help.toggle()
+        self.modelHelp.toggle()
 
     def notification(self, text, seconds=2.0):
         self._notifications.set_text(text, seconds=seconds)
@@ -216,3 +231,4 @@ class HUD(object):
                 v_offset += 18
         self._notifications.render(display)
         self.help.render(display)
+        self.modelHelp.render(display)

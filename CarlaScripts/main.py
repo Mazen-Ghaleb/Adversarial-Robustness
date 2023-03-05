@@ -30,7 +30,6 @@ except IndexError:
 import carla
 import argparse
 import logging
-import HelpText as Ht
 
 try:
     import cv2
@@ -43,6 +42,10 @@ try:
 except ImportError:
     raise RuntimeError(
         'cannot import pygame, make sure pygame package is installed')
+
+# Variable imports
+from HelpText import helpText
+from HelpText import modelHelpText
 
 # Class imports
 from KeyboardControl import KeyboardControl
@@ -248,10 +251,7 @@ def main():
 
     logging.info('listening to server %s:%s', args.host, args.port)
 
-    print(Ht.__doc__)
-    print("    F3           : toggle Model Image Window")
-    print("    F4           : toggle Attack Image Window")
-    print("    F5           : toggle Defense Image Window")
+    print(helpText, modelHelpText)
 
     try:
 

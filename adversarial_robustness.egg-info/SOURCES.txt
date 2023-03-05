@@ -15,7 +15,6 @@ CarlaScripts/KeyboardControl.py
 CarlaScripts/LaneInvasionSensor.py
 CarlaScripts/RadarSensor.py
 CarlaScripts/World.py
-CarlaScripts/__init__.py
 CarlaScripts/demo.py
 CarlaScripts/main.py
 adversarial_robustness.egg-info/PKG-INFO
@@ -28,7 +27,10 @@ attack/fast_attacks.py
 attack/fgsm.py
 attack/iterative_fgsm.py
 attack/opt.py
+attack/pgd.py
 defense/__init__.py
+defense/generate_attacked_samples.py
+defense/generate_model_outputs.py
 defense/high_level_guided_denoiser.py
 model/__init__.py
 model/custom_yolo.py
