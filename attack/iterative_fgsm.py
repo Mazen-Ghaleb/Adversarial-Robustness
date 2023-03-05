@@ -14,7 +14,7 @@ class ItFGSM(AttackBase):
 
         iter = int(min(eps + 4, 1.25 * eps))
 
-        self.model.train()
+        self.model.eval()
         for _ in range(iter):
             modle_outputs = self.model(images)
             if targets is None:

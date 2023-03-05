@@ -11,7 +11,7 @@ class FGSM(AttackBase):
         super().generate_attack(images, targets, eps, return_numpy)
         images.requires_grad = True
 
-        self.model.train()
+        self.model.eval()
         model_output = self.model(images)
         if targets is None:
             targets = self.target_generator(model_output)
