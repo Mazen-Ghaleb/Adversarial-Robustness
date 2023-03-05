@@ -97,6 +97,7 @@ class World(object):
 
         self.model_flag = False
         self.attack_model_flag = False
+        self.defense_model_flag = False
         self.modelPicture_flag = False
         self.modelClassificationPicture_flag = False
 
@@ -111,6 +112,9 @@ class World(object):
 
         self.attack_methods = []
         self.attack_currentMethodIndex = 0
+        
+        self.defense_methods = []
+        self.defense_currentMethodIndex = 0
 
         self.attack_model_result = None
         self.attack_model_speed = None
@@ -242,8 +246,11 @@ class World(object):
             self.model_result = None
         self.model_flag = flag
 
-    def toggle_attack_model(self, flag):  # True to activate attack model and False to stop attack model
+    def toggle_attack_model(self, flag:bool):  # True to activate attack model and False to stop attack model
         self.attack_model_flag = flag
+    
+    def toggle_defense_model(self, flag:bool):  # True to activate defense model and False to stop defense model
+        self.defense_model_flag = flag
 
     def modify_vehicle_physics(self, actor):
         # If actor is not a vehicle, we cannot use the physics control
@@ -300,7 +307,7 @@ def to_bgr_array(image):
     array = array[:, :, :3]
     return array
 
-def drawBoundingBox(boxes, image, classifications, confidences, color =(0, 255, 0), font = cv2.FONT_HERSHEY_SIMPLEX, thickness = 2):
+def drawBoundingBox(boxes, image: np.ndarray, classifications, confidences, color =(0, 255, 0), font = cv2.FONT_HERSHEY_SIMPLEX, thickness = 2):
     for box,classification,confidence in zip(boxes,classifications,confidences):
         detected_image = cv2.rectangle(image, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), color, thickness)
         detected_image = cv2.putText(detected_image, "{}: {:.2f} %".format(int(classification), confidence*100), 
@@ -321,18 +328,24 @@ def calculate_model(image, world: World):
 
         calculate_classification(world, np.array(image, copy=True))
         
-        if world.attack_model_flag:
+        if world.defense_model_flag and world.attack_model_flag:
+            calculate_attack(world, np.array(image, copy=True))
+            calculate_defense(world, np.array(image, copy=True))
+            calculate_overrideSpeed(world, world.defense_model_speed)
+        elif world.defense_model_flag:
+            calculate_defense(world, np.array(image, copy=True))
+            calculate_overrideSpeed(world, world.defense_model_speed)
+        elif world.attack_model_flag:
             calculate_attack(world, np.array(image, copy=True))
             calculate_overrideSpeed(world, world.attack_model_speed)
         else:
             calculate_overrideSpeed(world, world.model_speed)
-       
 
         print("{:<25}".format("Total Model time"),": {:.3f}s".format(timer()-total_start))
-
+        
     world.model_currentTick = (world.model_currentTick+1) %world.model_tickRate
 
-def calculate_classification(world, image):
+def calculate_classification(world: World, image):
     detection_start = timer()
     world.model_result = world.detector.run_without_attack()
 
@@ -373,7 +386,27 @@ def calculate_attack(world: World, image):
         print("{:<25}".format("{} Attack Model time".format(world.attack_methods[world.attack_currentMethodIndex])),
         ": {:.3f}s No Sign Detected".format(timer()-attack_start))
 
-def calculate_overrideSpeed(world, detectedSpeed):
+def calculate_defense(world: World, image):
+    defense_start = timer()
+    world.defense_model_result = world.detector.run_with_defense(world.defense_methods[world.defense_currentMethodIndex],
+                                                                 world.attack_methods[world.attack_currentMethodIndex])
+    
+    if world.defense_model_result is not None:
+        world.defense_model_speed = world.defense_model_result[0][0]
+        world.defense_model_confidence = world.defense_model_result[1][0]
+        world.defense_model_image = drawBoundingBox(world.defense_model_result[2], image, world.defense_model_result[0], world.defense_model_result[1])
+        
+        print("{:<25}".format("{} Defense Model time".format(world.defense_methods[world.defense_currentMethodIndex])),
+        ": {:.3f}s".format(timer()-defense_start),
+        "Label:{:<3} Confidence:{:.3f}".format(int(world.defense_model_speed), world.defense_model_confidence))
+    else:
+        world.defense_model_speed = None
+        world.defense_model_confidence = None
+        world.defense_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
+        print("{:<25}".format("{} Defense Model time".format(world.defense_methods[world.defense_currentMethodIndex])),
+        ": {:.3f}s No Sign Detected".format(timer()-defense_start))
+
+def calculate_overrideSpeed(world: World, detectedSpeed):
     if world.isOverrideSpeed:
         if detectedSpeed:
             # Over 3.6 to convert it from km/h to m/s because constant velocity takes it in m/s

@@ -15,7 +15,7 @@ import math
 from tqdm import tqdm
 from torchviz import make_dot
 from yolox.models import IOUloss
-from hgd import HGD as HGD2
+from .hgd import HGD as HGD2
 
 """
     implementation for high-level representation guided denoiser from
@@ -347,8 +347,9 @@ def get_HGD_model(device):
     dir_relative_path = os.path.relpath(os.path.dirname(__file__), os.getcwd())
     # get the path of the model and the expirement script
     model_path = os.path.join(dir_relative_path, "best_ckpt.pt")
-    model = HGD()
-    model.load_state_dict(torch.load(model_path)['model_state_dict'])
+    model = HGD(width=0.5)
+    # model.load_state_dict(torch.load(model_path)['model_state_dict'])
+    model.load_state_dict(torch.load(model_path))
     return model.to(device)
 
 

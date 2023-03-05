@@ -52,8 +52,8 @@ try:
     from pygame.locals import K_r
     from pygame.locals import K_s
     from pygame.locals import K_t
-    from pygame.locals import K_v
     from pygame.locals import K_u
+    from pygame.locals import K_v
     from pygame.locals import K_w
     from pygame.locals import K_x
     from pygame.locals import K_y
@@ -176,6 +176,18 @@ class KeyboardControl(object):
                         world.toggle_model(True)
                         world.hud.notification(
                             "Speed-limit Sign detection enabled")
+                elif event.key == K_e and pygame.key.get_mods() & KMOD_SHIFT:
+                    if (world.model_flag):
+                        if (world.defense_model_flag):
+                            world.toggle_defense_model(False)
+                            world.defense_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
+                            world.hud.notification("{} Defense Sign detection disabled".format(world.defense_methods[world.defense_currentMethodIndex]))
+                        else:
+                            world.toggle_defense_model(True)
+                            world.hud.notification("{} Attack Sign detection enabled".format(world.defense_methods[world.defense_currentMethodIndex]))
+                    else:
+                        world.hud.notification(
+                            "Can't enable Defense Sign detection while Sign detection is disabled")
                 elif event.key == K_e:
                     if (world.model_flag):
                         if (world.attack_model_flag):
@@ -188,6 +200,9 @@ class KeyboardControl(object):
                     else:
                         world.hud.notification(
                             "Can't enable Attack Sign detection while Sign detection is disabled")
+                elif event.key == K_f and pygame.key.get_mods() & KMOD_SHIFT:
+                    world.defense_currentMethodIndex = (world.defense_currentMethodIndex+1) % len(world.defense_methods)
+                    world.hud.notification("Changed Defense method to {}".format(world.defense_methods[world.defense_currentMethodIndex]))
                 elif event.key == K_f:
                     world.attack_currentMethodIndex = (world.attack_currentMethodIndex+1) % len(world.attack_methods)
                     world.hud.notification("Changed Attack method to {}".format(world.attack_methods[world.attack_currentMethodIndex]))

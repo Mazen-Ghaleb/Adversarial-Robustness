@@ -165,6 +165,14 @@ class HUD(object):
             if (world.attack_model_confidence is not None):
                 self._info_text += ['Attacked Confidence: %.3f'%
                                     world.attack_model_confidence]
+        
+        if (world.defense_model_flag):
+            if (world.defense_model_speed is not None):
+                self._info_text += ['Defense Speed: %d'% world.defense_model_speed]
+
+            if (world.defense_model_confidence is not None):
+                self._info_text += ['Defense Confidence: %.3f'%
+                                    world.defense_model_confidence]
 
     def toggle_info(self):
         self._show_info = not self._show_info

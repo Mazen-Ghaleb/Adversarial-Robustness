@@ -90,7 +90,9 @@ Model controls
     Y            : toggle auto-speed limit
     U            : toggle Speed-limit Sign detection
     E            : toggle Attack Sign detection method
-    F            : switch Attack Sign detection method
+    SHIFT + E    : toggle Defense Sign detection method
+    F            : switch Attack method
+    SHIFT + F    : switch Defense method
     O            : to save current view of Speed-limit Sign detection
     J            : to save classified view of Speed-limit Sign detection
     

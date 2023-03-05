@@ -106,14 +106,15 @@ def game_loop(args):
         if (world.detector is None):
             world.detector = Demo()
             
+            world.attack_methods.append(("FGSM"))
+            world.attack_methods.append(("IT-FGSM"))
+            world.defense_methods.append(("HGD"))
+            
             # Initial cache of function
             world.detector.preprocess(cv2.imread("../out/sample.png"))
             temp_cache = world.detector.run_without_attack()
             
             # Initial cache of function
-            world.attack_methods.append(("FGSM"))
-            world.attack_methods.append(("IT-FGSM"))
-            
             temp_cache = world.detector.run_with_attack(world.attack_methods[0])
             #temp_cache = it_fgsm(world.detector.model, temp_cache_img, world.device, 4, True, batch= False)
 
