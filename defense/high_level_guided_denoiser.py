@@ -15,7 +15,7 @@ import math
 from tqdm import tqdm
 from torchviz import make_dot
 from yolox.models import IOUloss
-from .hgd import HGD as HGD2
+from hgd import HGD as HGD2
 
 """
     implementation for high-level representation guided denoiser from
@@ -185,12 +185,12 @@ class ExperimentalLoss(nn.Module):
         #combined_loss = torch.linalg.norm(denoised_output[:,:,4:] - benign_output[:,:,4:],dim=(1,2),ord=1).mean()
         # iou_loss = self.iou(denoised_output[:,:,:4],benign_output[:,:,:4]).mean()
         #loss = combined_loss
-        mse_loss = F.mse_loss(benign_output[:, : , :4], denoised_output[:, :, :4])
-        # denoised_output[:,:,:4] = denoised_output[:,:,:4]/640
-        # benign_output[:,:,:4] = benign_output[:,:,:4]/640
+        # mse_loss = F.mse_loss(benign_output[:, : , :4], denoised_output[:, :, :4])
+        denoised_output[:,:,:4] = denoised_output[:,:,:4]/640
+        benign_output[:,:,:4] = benign_output[:,:,:4]/640
         
-        loss = torch.linalg.norm((denoised_output[:, :, 4:]-benign_output[:, :, 4:]),
-                                 dim=(1,2),ord=2).mean() + mse_loss
+        loss = torch.linalg.norm((denoised_output-benign_output),
+                                 dim=(1,2),ord=2).mean()
         return loss
 
 class Preprocessor:    
@@ -232,20 +232,21 @@ class Trainer:
             device,
             optimizer,
             criterion,
+            scheduler,
             fp16=True
             ) -> None:
         self.model = model
         self.target_model = target_model
         self.device = device
         self.model.to(self.device)
-        
+        self.scheduler = scheduler
         self.target_model.to(self.device)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.optimizer = optimizer
         self.criterion = criterion
-        self.attack = FGSM()
-        self.attack.model = self.target_model
+        #self.attack = FGSM()
+        # self.attack.model = self.target_model
         self.best_val_loss = math.inf
         self.fp16 = fp16
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16)
@@ -334,7 +335,8 @@ class Trainer:
         for epoch in range(n_epochs):
             epoch_train_loss = self.train_epoch(epoch)
             epoch_val_loss = self.val_epoch(epoch)
-            print(f"Epoch number {epoch}/{n_epochs}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
+            self.scheduler.step(epoch_val_loss)
+            #print(f"Epoch number {epoch}/{n_epochs}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
             train_losses.append(epoch_train_loss)
             val_losses.append(epoch_val_loss)
             print(f"Epoch {epoch + 1}/{n_epochs},"
@@ -360,7 +362,7 @@ if __name__ == "__main__":
     # print(sum(p.numel() for p in hgd.parameters() if p.requires_grad))
     
     # model = HGD(width=0.5)
-    model = HGD2(width=0.5, growth_rate=16, bn_size=2)
+    model = HGD2(width=1, growth_rate=32, bn_size=4)
     model.eval()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -382,7 +384,7 @@ if __name__ == "__main__":
     attacked_images_path = os.path.join(
         os.path.dirname(os.getcwd()),'model','datasets','attacked_images')
 
-    annotations_path = os.path.join(dataset_path,'annotations')
+    annotations_path = os.getcwd() #os.path.join(dataset_path,'annotations')
     train_dataset = COCODataset(
         os.path.join(model_outputs_path,'train'),
         os.path.join(annotations_path,'train2017.json'),
@@ -394,8 +396,8 @@ if __name__ == "__main__":
         os.path.join(attacked_images_path,'val'))
     
 
-    batch_size_train = 16
-    batch_size_val = 16
+    batch_size_train = 8
+    batch_size_val = 32
     train_dataloader = DataLoader(train_dataset,batch_size= batch_size_train,
                                    shuffle=True,pin_memory=True)
     val_dataloader = DataLoader(val_dataset,batch_size= batch_size_val,
@@ -412,7 +414,7 @@ if __name__ == "__main__":
     target_model = get_model(device)
 
     # optimizer = optim.SGD(model.parameters(),lr= 1e-5,momentum=0.9)
-    optimizer = optim.Adam(model.parameters(), lr=1e-2)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
     trainer = Trainer(
         model,
         target_model,
@@ -420,8 +422,9 @@ if __name__ == "__main__":
         val_dataloader,
         device,optimizer,
         criterion= ExperimentalLoss(),
-        fp16=False)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,'min', patience = 10,factor=0.9),
+        fp16=True)
 
-    trainer.train(100)
-    # trainer.val_epoch(0)
+    trainer.train(300)
+    # trainer.val_epoch(1)
     

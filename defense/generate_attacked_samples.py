@@ -28,8 +28,13 @@ def generate_attacked_samples(dataloader, split_name, eps = 4):
 
         for pic_idx, target in enumerate(targets):
             # print(target)
-            cv2.imwrite(os.path.join(os.path.dirname(os.getcwd()), 'model', 'datasets', 'attacked_images',
+            if  not os.path.isfile(os.path.join(os.path.dirname(os.getcwd()), 'model', 'datasets', 'attacked_images',
+                        split_name, str(target))):
+                cv2.imwrite(os.path.join(os.path.dirname(os.getcwd()), 'model', 'datasets', 'attacked_images',
                         split_name, str(target)), outputs[pic_idx].cpu().numpy().transpose((1, 2, 0)))
+            else:
+                cv2.imwrite(os.path.join(os.path.dirname(os.getcwd()), 'model', 'datasets', 'attacked_images',
+                        split_name, str(target).split(".")[0]+".1."+str(target).split(".")[1]), outputs[pic_idx].cpu().numpy().transpose((1, 2, 0)))
 
 
 class COCODataset(Dataset):
