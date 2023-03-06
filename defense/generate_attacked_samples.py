@@ -15,7 +15,7 @@ from tqdm import tqdm
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-def generate_attacked_samples(dataloader, split_name):
+def generate_attacked_samples(dataloader, split_name, eps = 4):
     attack = FGSM()
 
     attack.model = get_model(device)
@@ -24,7 +24,7 @@ def generate_attacked_samples(dataloader, split_name):
     for idx, (input, targets) in enumerate(tqdm(dataloader)):
 
         input = input.to(device)
-        outputs = attack.generate_attack(input)
+        outputs = attack.generate_attack(input,eps=eps)
 
         for pic_idx, target in enumerate(targets):
             # print(target)
@@ -71,12 +71,15 @@ if __name__ == "__main__":
 
     test_dataset = COCODataset(os.path.join(
         dataset_path, 'test2017'), os.path.join(annotations_path, 'test2017.json'))
-    test_dataloader = DataLoader(train_dataset, batch_size=1, pin_memory=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=1, pin_memory=True)
 
     val_dataset = COCODataset(os.path.join(
         dataset_path, 'val2017'), os.path.join(annotations_path, 'val2017.json'))
-    val_dataloader = DataLoader(train_dataset, batch_size=1, pin_memory=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=1, pin_memory=True)
 
-    generate_attacked_samples(train_dataloader, 'train')
-    generate_attacked_samples(val_dataloader, 'val')
-    generate_attacked_samples(test_dataloader, 'test')
+    eps_values = [1,2]
+
+    for eps in eps_values:
+        generate_attacked_samples(train_dataloader, 'train',eps=eps)
+        generate_attacked_samples(val_dataloader, 'val',eps=eps)
+        generate_attacked_samples(test_dataloader, 'test',eps=eps)
