@@ -8,7 +8,7 @@ from attack.attack_base import AttackBase
 import torch.nn.functional as F
 from model.sign_classifier import classifier_loss, classifier_target_generator
 from model.custom_yolo import yolox_loss, yolox_target_generator
-from defense.high_level_guided_denoiser import get_HGD_model
+from defense.hgd_trainer import get_HGD_model
 
 class Demo:
     def __init__(self) -> None:
@@ -22,7 +22,7 @@ class Demo:
         self.classifier = SignClassifier(self.device)
         self.classes = np.array([100, 120, 20, 30, 40, 15, 50, 60, 70, 80])
         self.attacks = {"FGSM": FGSM(), "IT-FGSM": ItFGSM()}
-        self.defenses = {"HGD": get_HGD_model(self.device)}
+        #self.defenses = {"HGD": get_HGD_model(self.device)}
 
     def __crop_signs(self, detection_boxes):
         delete_masks = []
@@ -99,28 +99,29 @@ class Demo:
         return self.classes[classification_labels], classification_conf, detection_boxes
 
     def run_with_defense(self, defense_type, attack_type):
-        defense_model = self.defenses[defense_type]
+        pass
+        # defense_model = self.defenses[defense_type]
         
-        attack: AttackBase = self.attacks[attack_type]
-        images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
+        # attack: AttackBase = self.attacks[attack_type]
+        # images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
 
-        attack.model = self.detector.model
-        attack.loss = yolox_loss
-        attack.target_generator = yolox_target_generator
-        perturbed_images = attack.generate_attack(images)
+        # attack.model = self.detector.model
+        # attack.loss = yolox_loss
+        # attack.target_generator = yolox_target_generator
+        # perturbed_images = attack.generate_attack(images)
         
-        defense_model.eval()
-        with torch.no_grad():
-            denoised_images = perturbed_images - defense_model(perturbed_images)
+        # defense_model.eval()
+        # with torch.no_grad():
+        #     denoised_images = perturbed_images - defense_model(perturbed_images)
 
-        detection_output = self.detector.get_model_output(denoised_images)[0]
-        detection_output = self.detector.decode_model_output(detection_output)
+        # detection_output = self.detector.get_model_output(denoised_images)[0]
+        # detection_output = self.detector.decode_model_output(detection_output)
         
-        if detection_output is None:
-            return None
-        else:
-            # classification_labels, classification_conf, detection_boxes =  detection_output
-            return detection_output
+        # if detection_output is None:
+        #     return None
+        # else:
+        #     # classification_labels, classification_conf, detection_boxes =  detection_output
+        #     return detection_output
 
 if __name__ == "__main__":
     import os

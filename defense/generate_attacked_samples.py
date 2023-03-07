@@ -4,10 +4,10 @@ import cv2
 import os
 from model.speed_limit_detector import get_model
 import torch
-from high_level_guided_denoiser import COCODataset
+from hgd_trainer import COCODataset
 from torch.utils.data import DataLoader, Dataset
 from pycocotools.coco import COCO
-from high_level_guided_denoiser import Preprocessor
+from hgd_trainer import Preprocessor
 
 from tqdm import tqdm
 
@@ -24,17 +24,21 @@ def generate_attacked_samples(dataloader, split_name, eps = 4):
     for idx, (input, targets) in enumerate(tqdm(dataloader)):
 
         input = input.to(device)
-        outputs = attack.generate_attack(input,eps=eps)
+        outputs = attack.generate_attack(input,eps=eps, return_numpy=True)
 
         for pic_idx, target in enumerate(targets):
+            splits = str(target).split(".")
+            img_name, img_extension = splits[0],splits[-1]
+            cv2.imwrite(os.path.join(os.path.dirname(os.getcwd()), 'model', 'datasets', 'attacked_images',
+                         split_name, f"{img_name}.{eps}.{img_extension}"), outputs[pic_idx].transpose((1, 2, 0)))
             # print(target)
-            if  not os.path.isfile(os.path.join(os.path.dirname(os.getcwd()), 'model', 'datasets', 'attacked_images',
-                        split_name, str(target))):
-                cv2.imwrite(os.path.join(os.path.dirname(os.getcwd()), 'model', 'datasets', 'attacked_images',
-                        split_name, str(target)), outputs[pic_idx].cpu().numpy().transpose((1, 2, 0)))
-            else:
-                cv2.imwrite(os.path.join(os.path.dirname(os.getcwd()), 'model', 'datasets', 'attacked_images',
-                        split_name, str(target).split(".")[0]+".1."+str(target).split(".")[1]), outputs[pic_idx].cpu().numpy().transpose((1, 2, 0)))
+            # if  not os.path.isfile(os.path.join(os.path.dirname(os.getcwd()), 'model', 'datasets', 'attacked_images',
+            #             split_name, str(target))):
+            #     cv2.imwrite(os.path.join(os.path.dirname(os.getcwd()), 'model', 'datasets', 'attacked_images',
+            #             split_name, str(target)), outputs[pic_idx].cpu().numpy().transpose((1, 2, 0)))
+            # else:
+            #     cv2.imwrite(os.path.join(os.path.dirname(os.getcwd()), 'model', 'datasets', 'attacked_images',
+            #             split_name, str(target).split(".")[0]+".1."+str(target).split(".")[1]), outputs[pic_idx].cpu().numpy().transpose((1, 2, 0)))
 
 
 class COCODataset(Dataset):
@@ -72,17 +76,17 @@ if __name__ == "__main__":
     annotations_path = os.path.join(dataset_path, 'annotations')
     train_dataset = COCODataset(os.path.join(
         dataset_path, 'train2017'), os.path.join(annotations_path, 'train2017.json'))
-    train_dataloader = DataLoader(train_dataset, batch_size=1, pin_memory=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=16, pin_memory=True)
 
     test_dataset = COCODataset(os.path.join(
         dataset_path, 'test2017'), os.path.join(annotations_path, 'test2017.json'))
-    test_dataloader = DataLoader(test_dataset, batch_size=1, pin_memory=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=16, pin_memory=True)
 
     val_dataset = COCODataset(os.path.join(
         dataset_path, 'val2017'), os.path.join(annotations_path, 'val2017.json'))
-    val_dataloader = DataLoader(val_dataset, batch_size=1, pin_memory=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=16, pin_memory=True)
 
-    eps_values = [1,2]
+    eps_values = [0,1,2,3,4]
 
     for eps in eps_values:
         generate_attacked_samples(train_dataloader, 'train',eps=eps)
