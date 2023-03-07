@@ -1,4 +1,4 @@
-from attack.attac_base import AttackBase
+from attack.attack_base import AttackBase
 import torch
 class PGD(AttackBase):
     def __init__(self) -> None:
@@ -14,15 +14,18 @@ class PGD(AttackBase):
 
         with torch.no_grad():
             grad = images.grad
+
+            # take a step in the lp direction of the gradient
             if step_norm == 'inf':
                 norm = grad.sign() * eps
             else:
                 norm = grad.view(images.shape[0], -1).norm(p=step_norm, dim=-1)
-                norm = norm.view(-1, images.shape[0], 1, 1)
+                norm = norm.view(-1, 1, 1, 1)
                 grad = grad * eps / norm
 
             perturbed_images = grad + images
 
+            #project the perturbed image to the l_p ball
             if eps_norm == 'inf':
                 perturbed_images = torch.min(perturbed_images, images + eps)
                 perturbed_images = torch.max(images + eps, perturbed_images)
@@ -48,8 +51,9 @@ class PGD(AttackBase):
         model_output = self.model(images)
         if targets is None:
             targets = self.target_generator(model_output)
-        for i in tqdm(range(100)):
-            perturbed_images = self.__pgd_step(perturbed_images, targets=targets)
+        for i in tqdm(range(30)):
+            perturbed_images = self.__pgd_step(perturbed_images, targets=targets, step_norm=2,
+                                                eps_norm=2, eps=eps)
         return perturbed_images
 
 
