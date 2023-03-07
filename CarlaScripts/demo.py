@@ -1,11 +1,13 @@
 from model.speed_limit_detector import SpeedLimitDetector
 from model.sign_classifier import SignClassifier
-from attack.fgsm import FGSM
+
+from attack.attack_base import AttackBase
+from attack.pgd import PGD
 from attack.iterative_fgsm import ItFGSM
+from attack.fgsm import FGSM
+
 import torch
 import numpy as np
-from attack.attack_base import AttackBase
-import torch.nn.functional as F
 from model.sign_classifier import classifier_loss, classifier_target_generator
 from model.custom_yolo import yolox_loss, yolox_target_generator
 from defense.hgd_trainer import get_HGD_model
@@ -21,8 +23,12 @@ class Demo:
         self.detector = SpeedLimitDetector(self.device)
         self.classifier = SignClassifier(self.device)
         self.classes = np.array([100, 120, 20, 30, 40, 15, 50, 60, 70, 80])
-        self.attacks = {"FGSM": FGSM(), "IT-FGSM": ItFGSM()}
-        #self.defenses = {"HGD": get_HGD_model(self.device)}
+        self.attacks = {"FGSM": FGSM(), "IT-FGSM": ItFGSM(), "PGD": PGD()}
+        self.defenses = {"HGD": get_HGD_model(self.device)}
+
+    def __sort_labels(self, cls_labels, cls_confs, detection_boxes):
+        sorted_indexes = np.argsort(cls_confs)[::-1]
+        return cls_labels[sorted_indexes], cls_confs[sorted_indexes], detection_boxes[sorted_indexes]
 
     def __crop_signs(self, detection_boxes):
         delete_masks = []
@@ -64,7 +70,7 @@ class Demo:
         cropped_signs = torch.from_numpy(cropped_signs).float().to(self.device)
         classification_labels, classification_conf =  self.classifier.classify_signs(cropped_signs)
 
-        return self.classes[classification_labels], classification_conf, detection_boxes
+        return self.__sort_labels(self.classes[classification_labels], classification_conf, detection_boxes)
     
     def run_with_attack(self, attack_type, debug=False):
 
@@ -96,7 +102,7 @@ class Demo:
         perturbed_cropped_signs = attack.generate_attack(cropped_signs)
 
         classification_labels, classification_conf =  self.classifier.classify_signs(perturbed_cropped_signs)
-        return self.classes[classification_labels], classification_conf, detection_boxes
+        return self.__sort_labels(self.classes[classification_labels], classification_conf, detection_boxes)
 
     def run_with_defense(self, defense_type, attack_type):
         pass
@@ -128,16 +134,16 @@ if __name__ == "__main__":
     import cv2
     test_imgs_path = os.path.join(os.path.dirname(__file__), "../test_imgs")
     test_imgs_path = os.path.relpath(test_imgs_path, os.getcwd())
-    img = cv2.imread(os.path.join(test_imgs_path, "test.png"))
+    img = cv2.imread(os.path.join(test_imgs_path, "test6.png"))
     demo = Demo()
     demo.preprocess(img)
-    output = demo.run_without_attack()
+    output = demo.run_without_attack(debug=True)
     print("without attack: ")
     print(output[0], output[1], output[2])
     # output = demo.run_with_defense("HGD","FGSM")
     # print(output[0], output[1], output[2])
     print("with attack: ")
-    output = demo.run_with_attack("IT-FGSM")
+    output = demo.run_with_attack("PGD", debug=True)
     print(output[0], output[1], output[2])
 
     # output = demo.run_with_attack("FGSM")
