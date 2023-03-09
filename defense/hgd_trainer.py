@@ -12,7 +12,7 @@ from model.speed_limit_detector import get_model
 from attack.fgsm import FGSM
 from torch.utils.checkpoint import checkpoint
 import math
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from torchviz import make_dot
 from yolox.models import IOUloss
 from defense.high_level_guided_denoiser import HGD as HGD2
@@ -222,7 +222,8 @@ class Trainer:
             optimizer,
             criterion,
             scheduler,
-            fp16=True
+            fp16=True,
+            accumlation_steps = 4,
             ) -> None:
         self.model = model
         self.target_model = target_model
@@ -234,12 +235,12 @@ class Trainer:
         self.val_loader = val_loader
         self.optimizer = optimizer
         self.criterion = criterion
-        #self.attack = FGSM()
-        # self.attack.model = self.target_model
         self.best_val_loss = math.inf
         self.fp16 = fp16
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16)
         self.data_type = torch.float16 if self.fp16 else torch.float32
+        self.accumlation_steps = accumlation_steps
+
         self.__disable_target_model_wieghts_grad()
 
     def __disable_target_model_wieghts_grad(self):
@@ -258,12 +259,11 @@ class Trainer:
         dot.render(name, format=format)
 
     def train_epoch(self,epoch):
-        print(f"Now training epoch {epoch}")
+        train_bpar = tqdm(enumerate(self.train_loader), initial=1)
+        train_bpar.set_description(f'train_loss: ')
         self.model.train()
         train_loss = 0.0
-        pbar = tqdm(self.train_loader, desc='')
-        for i, (perturbed_images, target_model_targets) in enumerate(pbar):
-
+        for i, (perturbed_images, target_model_targets) in train_bpar:
             with torch.cuda.amp.autocast(enabled=self.fp16):
                 target_model_targets = target_model_targets.to(self.data_type).to(self.device)
 
@@ -272,34 +272,29 @@ class Trainer:
                 self.target_model.eval()
                 denoised_images = perturbed_images - hgd_outputs
                 target_model_outputs = self.target_model(denoised_images)
-                loss = self.criterion(target_model_outputs, target_model_targets)
+                loss = self.criterion(target_model_outputs, target_model_targets) 
+                train_bpar.set_description(f'train_loss: {loss.item():.4f}')
 
-            # with torch.no_grad():
-            #     target_model_targets = self.target_model(images)
-                    #target_model_targets = torch.randn(target_model_outputs.shape).half().to(self.device)
-            #target_model_outputs = torch.randn(target_model_targets.shape).to(self.device)
+                loss /= self.accumlation_steps
             
-            
-            self.optimizer.zero_grad(set_to_none=True)
             self.scaler.scale(loss).backward()
+
+        if ((i + 1) % self.accumlation_steps) == 0 or i == len(self.train_loader) - 1:
             self.scaler.step(self.optimizer)
             self.scaler.update()
-            
-            pbar.set_description(f"Training Loss: {loss.item():.4f}")
-            # self.optimzer.step()
+            self.optimizer.zero_grad(set_to_none=True)
             train_loss += loss.item() * target_model_targets.size(0)
         
         epoch_train_loss = train_loss / len(self.train_loader.dataset)
-        print(f"Training for epoch number {epoch} resulted in epoch_train_loss = {epoch_train_loss}")
         return epoch_train_loss
 
     def val_epoch(self,epoch):
-        print(f'Running Validation for epoch {epoch}')
         self.model.eval()
         val_loss = 0.0
+        val_bpar = tqdm(self.val_loader, initial=1)
+        val_bpar.set_description('val_loss:')
         with torch.no_grad():
-            pbar = tqdm(self.val_loader)
-            for i, (perturbed_images, target_model_targets) in enumerate(pbar):
+            for perturbed_images, target_model_targets in val_bpar:
                 with torch.cuda.amp.autocast(enabled=self.fp16):
                     target_model_targets = target_model_targets.to(self.data_type).to(self.device)
                     perturbed_images = perturbed_images.to(self.data_type).to(self.device)
@@ -309,10 +304,9 @@ class Trainer:
                     denoised_images = perturbed_images - hgd_outputs
                     target_model_outputs = self.target_model(denoised_images)
                     loss = self.criterion(target_model_outputs, target_model_targets)
-                    pbar.set_description(f"Validation Loss: {loss.item():.4f}")
+                    val_bpar.set_description(f"val_loss: {loss:.4f}")
                     val_loss += loss.item() * target_model_targets.size(0)
             epoch_val_loss = val_loss / len(self.val_loader.dataset)
-        print(f'Validation for epoch number {epoch} resulted in epoch_val_loss = {epoch_val_loss}')
         if (epoch_val_loss < self.best_val_loss):
             torch.save({'model_dict':self.model.state_dict(),
                         'epoch': epoch},"best_ckpt.pt")
@@ -322,16 +316,21 @@ class Trainer:
     def train(self, n_epochs):
         train_losses = []
         val_losses = []
-        for epoch in range(n_epochs):
+        self.no_epochs = n_epochs
+        bpar = tqdm(range(n_epochs), initial=1)
+        for epoch in bpar:
+            bpar.set_description(f'Epoch {epoch}, train_loss: ,val_loss: ')
             epoch_train_loss = self.train_epoch(epoch)
+            bpar.set_description(f'Epoch {epoch}, train_loss: {epoch_train_loss:.4f},val_loss: ')
             epoch_val_loss = self.val_epoch(epoch)
-            self.scheduler.step()
+            bpar.set_description(fr'Epoch {epoch}, train_loss: {epoch_train_loss:.4f},val_loss:{epoch_val_loss:.4f}')
             #print(f"Epoch number {epoch}/{n_epochs}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
             train_losses.append(epoch_train_loss)
             val_losses.append(epoch_val_loss)
             print(f"Epoch {epoch + 1}/{n_epochs},"
                   f"Train Loss: {epoch_train_loss:.4f},"
                   f"Val Loss: {epoch_val_loss:.4f},")
+            self.scheduler.step()
         return train_losses, val_losses 
 
 
@@ -361,8 +360,6 @@ if __name__ == "__main__":
     def count_parameters(model, input_size):
         from torchsummary import summary
         summary(model, input_size)
-    # count_parameters(model, (3, 640, 640))
-    # count_parameters(model, (3, 224, 224))
     
     
     
@@ -395,14 +392,6 @@ if __name__ == "__main__":
     val_dataloader = DataLoader(val_dataset,batch_size= batch_size_val,
                                  shuffle=True,pin_memory=True,num_workers=2,prefetch_factor=5)
 
-    
-    
-    # print(len(train_dataset))
-
-    
-    #train_dataset.__getitem__(0)
-
-    
     target_model = get_model(device)
 
     # optimizer = optim.SGD(model.parameters(),lr= 1e-5,momentum=0.9)
@@ -415,8 +404,9 @@ if __name__ == "__main__":
         device,optimizer,
         criterion= ExperimentalLoss(),
         scheduler = optim.lr_scheduler.StepLR(optimizer,step_size=1,gamma=0.97),
-        fp16=True)
-
+        fp16=True,
+        accumlation_steps = 4,
+        )
     trainer.train(300)
     # trainer.val_epoch(1)
     
