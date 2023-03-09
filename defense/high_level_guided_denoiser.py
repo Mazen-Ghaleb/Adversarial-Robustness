@@ -1,4 +1,4 @@
-from torch.nn import Module, BatchNorm2d, ReLU, Conv2d, Sequential, ConvTranspose2d
+from torch.nn import Module, BatchNorm2d, ReLU, Conv2d, Sequential, ConvTranspose2d, Dropout2d
 from torch.nn import ModuleDict, AvgPool2d
 import torch.nn.functional as F
 from torch import Tensor
@@ -69,6 +69,7 @@ class Transition(Sequential):
         self.add_module('relu', ReLU(inplace=True))
         self.add_module('conv', Conv2d(num_input_features, num_output_features,
                                        kernel_size=kernel_size, stride=stride,padding=1,bias=False))
+        self.add_module('dropout', Dropout2d(p=0.3,inplace=True))
         # self.add_module('pool', Conv2d(kernel_size=2, stride=2))
 
 class Fuse(Module):
@@ -95,10 +96,12 @@ class HGD(Module):
             ReLU(inplace=True),
             Conv2d(in_channels=3, out_channels=start_channels,
                     kernel_size=7, stride=2, padding=3, bias=False),
+            Dropout2d(p=0.3,inplace=True),
             BatchNorm2d(start_channels),
             ReLU(inplace=True),
             Conv2d(in_channels=start_channels, out_channels=start_channels,
                     kernel_size=3, stride=2, padding=1, bias=False),
+            Dropout2d(p=0.3,inplace=True)
         )
 
 
@@ -113,6 +116,7 @@ class HGD(Module):
             ConvTranspose2d(in_channels=start_channels, out_channels=start_channels,
                    kernel_size=4, stride=2, padding=1, bias=False),
         )
+        
 
         self.fuse = Fuse()
 
@@ -169,8 +173,10 @@ class HGD(Module):
             transition = Transition(
                 inp + num_layers * growth_rate, out,
                   padding=padding, kernel_size=kernel_size, stride=stride)
+            
             self.add_module(f"backward_{i}", dense_block)
             self.add_module(f"backward_transition_{i}", transition)
+            
     def forward(self, input):
         #backward path
         stem_out = self.stem(input)

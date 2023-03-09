@@ -325,7 +325,7 @@ class Trainer:
         for epoch in range(n_epochs):
             epoch_train_loss = self.train_epoch(epoch)
             epoch_val_loss = self.val_epoch(epoch)
-            self.scheduler.step(epoch_val_loss)
+            self.scheduler.step()
             #print(f"Epoch number {epoch}/{n_epochs}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
             train_losses.append(epoch_train_loss)
             val_losses.append(epoch_val_loss)
@@ -391,9 +391,9 @@ if __name__ == "__main__":
     batch_size_train = 8
     batch_size_val = 32
     train_dataloader = DataLoader(train_dataset,batch_size= batch_size_train,
-                                   shuffle=True,pin_memory=True)
+                                   shuffle=True,pin_memory=True,num_workers=2,prefetch_factor=5)
     val_dataloader = DataLoader(val_dataset,batch_size= batch_size_val,
-                                 shuffle=True,pin_memory=True)
+                                 shuffle=True,pin_memory=True,num_workers=2,prefetch_factor=5)
 
     
     
@@ -414,7 +414,7 @@ if __name__ == "__main__":
         val_dataloader,
         device,optimizer,
         criterion= ExperimentalLoss(),
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,'min', patience = 10,factor=0.9),
+        scheduler = optim.lr_scheduler.StepLR(optimizer,step_size=1,gamma=0.97),
         fp16=True)
 
     trainer.train(300)
