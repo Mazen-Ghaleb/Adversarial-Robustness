@@ -169,18 +169,13 @@ class ExperimentalLoss(nn.Module):
         
         denoised_output = denoised_output.type(torch.float32)
         benign_output = benign_output.type(torch.float32)
-        #cls_loss = F.binary_cross_entropy(denoised_output[:,:,5:],benign_output[:,:,5:]).sum()
-        #obj_loss = F.binary_cross_entropy(denoised_output[:,:,4:5],benign_output[:,:,4:5]).sum()
-        #combined_loss = torch.linalg.norm(denoised_output[:,:,4:] - benign_output[:,:,4:],dim=(1,2),ord=1).mean()
-        # iou_loss = self.iou(denoised_output[:,:,:4],benign_output[:,:,:4]).mean()
-        #loss = combined_loss
-        # mse_loss = F.mse_loss(benign_output[:, : , :4], denoised_output[:, :, :4])
-        denoised_output[:,:,:4] = denoised_output[:,:,:4]/640
-        benign_output[:,:,:4] = benign_output[:,:,:4]/640
         
-        loss = torch.linalg.norm((denoised_output-benign_output),
-                                 dim=(1,2),ord=2).mean()
-        return loss
+        loss_bb = torch.pow(torch.abs(denoised_output[:,:,:4]-benign_output[:,:,:4]),1).mean()       
+        loss_obj = torch.pow(torch.abs(denoised_output[:,:,4]-benign_output[:,:,4]),1).mean()
+        loss_cls = torch.pow(torch.abs(denoised_output[:,:,5:]-benign_output[:,:,5:]),1).mean()
+        # loss = torch.linalg.norm((denoised_output-benign_output),
+        #                          dim=(1,2),ord=2).mean()
+        return loss_bb+loss_obj+loss_cls
 
 class Preprocessor:    
     def preprocess_model_input(self, img, input_size=[640, 640], swap=(2, 0, 1)):
@@ -259,7 +254,7 @@ class Trainer:
         dot.render(name, format=format)
 
     def train_epoch(self,epoch):
-        train_bpar = tqdm(enumerate(self.train_loader), initial=1)
+        train_bpar = tqdm(enumerate(self.train_loader), initial=1, total = len(self.train_loader),leave=None)
         train_bpar.set_description(f'train_loss: ')
         self.model.train()
         train_loss = 0.0
@@ -275,23 +270,25 @@ class Trainer:
                 loss = self.criterion(target_model_outputs, target_model_targets) 
                 train_bpar.set_description(f'train_loss: {loss.item():.4f}')
 
-                loss /= self.accumlation_steps
-            
-            self.scaler.scale(loss).backward()
 
-        if ((i + 1) % self.accumlation_steps) == 0 or i == len(self.train_loader) - 1:
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            self.optimizer.zero_grad(set_to_none=True)
-            train_loss += loss.item() * target_model_targets.size(0)
+            
+            self.scaler.scale(loss/self.accumlation_steps).backward()
         
+            if ((i + 1) % self.accumlation_steps) == 0 or i == len(self.train_loader) - 1:
+                
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+                self.optimizer.zero_grad(set_to_none=True)
+                
+            train_loss += loss.item() * target_model_targets.size(0)
+
         epoch_train_loss = train_loss / len(self.train_loader.dataset)
         return epoch_train_loss
 
     def val_epoch(self,epoch):
         self.model.eval()
         val_loss = 0.0
-        val_bpar = tqdm(self.val_loader, initial=1)
+        val_bpar = tqdm(self.val_loader, initial=1, total=len(self.val_loader),leave=None)
         val_bpar.set_description('val_loss:')
         with torch.no_grad():
             for perturbed_images, target_model_targets in val_bpar:
@@ -318,19 +315,16 @@ class Trainer:
         val_losses = []
         self.no_epochs = n_epochs
         bpar = tqdm(range(n_epochs), initial=1)
+        bpar.set_description(f'Epoch {1}, train_loss: ,val_loss: ')
         for epoch in bpar:
-            bpar.set_description(f'Epoch {epoch}, train_loss: ,val_loss: ')
             epoch_train_loss = self.train_epoch(epoch)
-            bpar.set_description(f'Epoch {epoch}, train_loss: {epoch_train_loss:.4f},val_loss: ')
+            bpar.set_description(f'Epoch {epoch+1}, train_loss: {epoch_train_loss:.4f},val_loss: ')
             epoch_val_loss = self.val_epoch(epoch)
-            bpar.set_description(fr'Epoch {epoch}, train_loss: {epoch_train_loss:.4f},val_loss:{epoch_val_loss:.4f}')
-            #print(f"Epoch number {epoch}/{n_epochs}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
+            bpar.set_description(fr'Epoch {epoch+1}, train_loss: {epoch_train_loss:.4f},val_loss:{epoch_val_loss:.4f}')
+            print(f"Epoch number {epoch}/{n_epochs}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
             train_losses.append(epoch_train_loss)
             val_losses.append(epoch_val_loss)
-            print(f"Epoch {epoch + 1}/{n_epochs},"
-                  f"Train Loss: {epoch_train_loss:.4f},"
-                  f"Val Loss: {epoch_val_loss:.4f},")
-            self.scheduler.step()
+            #self.scheduler.step()
         return train_losses, val_losses 
 
 
@@ -394,7 +388,7 @@ if __name__ == "__main__":
 
     target_model = get_model(device)
 
-    # optimizer = optim.SGD(model.parameters(),lr= 1e-5,momentum=0.9)
+    # optimizer = optim.SGD(model.parameters(),lr= 1e-4,momentum=0.9)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     trainer = Trainer(
         model,
@@ -403,9 +397,9 @@ if __name__ == "__main__":
         val_dataloader,
         device,optimizer,
         criterion= ExperimentalLoss(),
-        scheduler = optim.lr_scheduler.StepLR(optimizer,step_size=1,gamma=0.97),
+        scheduler = optim.lr_scheduler.StepLR(optimizer,step_size=1,gamma=0.98),
         fp16=True,
-        accumlation_steps = 4,
+        accumlation_steps = 8,
         )
     trainer.train(300)
     # trainer.val_epoch(1)
