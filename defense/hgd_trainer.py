@@ -17,6 +17,7 @@ from torchviz import make_dot
 from yolox.models import IOUloss
 from defense.high_level_guided_denoiser import HGD as HGD2
 import pandas as pd
+from torch.utils.tensorboard import SummaryWriter
 """
     implementation for high-level representation guided denoiser from
     https://openaccess.thecvf.com/content_cvpr_2018/html/Liao_Defense_Against_Adversarial_CVPR_2018_paper.html
@@ -235,6 +236,7 @@ class Trainer:
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16)
         self.data_type = torch.float16 if self.fp16 else torch.float32
         self.accumlation_steps = accumlation_steps
+        self.writer = SummaryWriter()
 
         self.__disable_target_model_wieghts_grad()
 
@@ -271,7 +273,6 @@ class Trainer:
                 train_bpar.set_description(f'train_loss: {loss.item():.4f}')
 
 
-            
             self.scaler.scale(loss/self.accumlation_steps).backward()
         
             if ((i + 1) % self.accumlation_steps) == 0 or i == len(self.train_loader) - 1:
@@ -315,13 +316,18 @@ class Trainer:
         val_losses = []
         self.no_epochs = n_epochs
         bpar = tqdm(range(n_epochs), initial=1)
-        bpar.set_description(f'Epoch {1}, train_loss: ,val_loss: ')
         for epoch in bpar:
+            bpar.set_description(f'Epoch {epoch + 1}, train_loss: {math.nan},val_loss: {math.nan}')
             epoch_train_loss = self.train_epoch(epoch)
             bpar.set_description(f'Epoch {epoch+1}, train_loss: {epoch_train_loss:.4f},val_loss: ')
             epoch_val_loss = self.val_epoch(epoch)
             bpar.set_description(fr'Epoch {epoch+1}, train_loss: {epoch_train_loss:.4f},val_loss:{epoch_val_loss:.4f}')
-            print(f"Epoch number {epoch}/{n_epochs}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
+            print(f"Epoch number {epoch + 1}/{n_epochs}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
+
+            self.writer.add_scalar("Train Loss", epoch_train_loss, epoch + 1)
+            self.writer.add_scalar("Val Loss", epoch_val_loss, epoch + 1)
+            self.writer.add_scalar("Learning rate", self.scheduler.get_lr(), epoch + 1)
+
             train_losses.append(epoch_train_loss)
             val_losses.append(epoch_val_loss)
             #self.scheduler.step()
@@ -398,8 +404,8 @@ if __name__ == "__main__":
         device,optimizer,
         criterion= ExperimentalLoss(),
         scheduler = optim.lr_scheduler.StepLR(optimizer,step_size=1,gamma=0.98),
-        fp16=True,
-        accumlation_steps = 8,
+        fp16=False,
+        accumlation_steps = 2,
         )
     trainer.train(300)
     # trainer.val_epoch(1)
