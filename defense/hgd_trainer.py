@@ -260,6 +260,9 @@ class Trainer:
         train_bpar.set_description(f'train_loss: ')
         self.model.train()
         train_loss = 0.0
+        total_norm_params = 0.0
+        total_norm_grads = 0.0
+        num_params = sum(p.numel() for p in self.model.parameters())
         for i, (perturbed_images, target_model_targets) in train_bpar:
             with torch.cuda.amp.autocast(enabled=self.fp16):
                 target_model_targets = target_model_targets.to(self.data_type).to(self.device)
@@ -276,13 +279,22 @@ class Trainer:
             self.scaler.scale(loss/self.accumlation_steps).backward()
         
             if ((i + 1) % self.accumlation_steps) == 0 or i == len(self.train_loader) - 1:
-                
+                with torch.no_grad():
+                    total_norm_params += torch.norm(
+                        torch.cat([p.grad.flatten() for p in self.model.parameters()]), p=2).item()
+                    total_norm_grads += torch.norm(
+                        torch.cat([p.flatten() for p in self.model.parameters()]), p=2).item()
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
                 self.optimizer.zero_grad(set_to_none=True)
-                
+
             train_loss += loss.item() * target_model_targets.size(0)
 
+        epoch_avg_norm_params = total_norm_params / num_params
+        epoch_avg_norm_grads = total_norm_grads / num_params
+
+        self.writer.add_scalar('avg_norm_params', epoch_avg_norm_params, global_step=epoch + 1)
+        self.writer.add_scalar('avg_norm_grads', epoch_avg_norm_grads, global_step=epoch + 1)
         epoch_train_loss = train_loss / len(self.train_loader.dataset)
         return epoch_train_loss
 
@@ -327,10 +339,11 @@ class Trainer:
             self.writer.add_scalar("Train Loss", epoch_train_loss, epoch + 1)
             self.writer.add_scalar("Val Loss", epoch_val_loss, epoch + 1)
             self.writer.add_scalar("Learning rate", self.scheduler.get_lr(), epoch + 1)
+            self.writer.flush()
 
             train_losses.append(epoch_train_loss)
             val_losses.append(epoch_val_loss)
-            #self.scheduler.step()
+            self.scheduler.step()
         return train_losses, val_losses 
 
 
@@ -404,8 +417,8 @@ if __name__ == "__main__":
         device,optimizer,
         criterion= ExperimentalLoss(),
         scheduler = optim.lr_scheduler.StepLR(optimizer,step_size=1,gamma=0.98),
-        fp16=False,
-        accumlation_steps = 2,
+        fp16=True,
+        accumlation_steps = 16,
         )
     trainer.train(300)
     # trainer.val_epoch(1)
