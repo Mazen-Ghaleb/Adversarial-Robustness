@@ -123,7 +123,7 @@ class HGD(Module):
             BatchNorm2d(3),
             ReLU(inplace=True),
             Conv2d(in_channels=3, out_channels=start_channels,
-                    kernel_size=7, stride=2, padding=3),
+                    kernel_size=7, stride=2, padding=3,bias=False),
 
 
             Dropout2d(p=0.1,inplace=True),
@@ -131,7 +131,7 @@ class HGD(Module):
             BatchNorm2d(start_channels),
             ReLU(inplace=True),
             Conv2d(in_channels=start_channels, out_channels=start_channels,
-                    kernel_size=3, stride=2, padding=1),
+                    kernel_size=3, stride=2, padding=1,bias=False),
 
 
             Dropout2d(p=0.1,inplace=True)
@@ -142,12 +142,12 @@ class HGD(Module):
             BatchNorm2d(start_channels),
             ReLU(inplace=True),
             ConvTranspose2d(in_channels=start_channels, out_channels=start_channels,
-                   kernel_size=4, stride=2, padding=1),
+                   kernel_size=4, stride=2, padding=1,bias=False),
 
             BatchNorm2d(start_channels),
             ReLU(inplace=True),
             ConvTranspose2d(in_channels=start_channels, out_channels=start_channels,
-                   kernel_size=4, stride=2, padding=1),
+                   kernel_size=4, stride=2, padding=1,bias=False),
 
         )
         
@@ -239,8 +239,8 @@ class HGD(Module):
         out_backward = self.reverse_stem(out_backward)
         out_backward = self.conv(out_backward)
 
-        #final_output = out_backward.tanh() * self.max_pixel_value
-        return out_backward
+        final_output = out_backward.tanh() * self.max_pixel_value
+        return final_output
 
 
 

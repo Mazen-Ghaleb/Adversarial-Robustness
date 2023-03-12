@@ -262,7 +262,7 @@ class Trainer:
         train_loss = 0.0
         total_norm_params = 0.0
         total_norm_grads = 0.0
-        # num_params = sum(p.numel() for p in self.model.parameters())
+        num_params = sum(p.numel() for p in self.model.parameters())
         for i, (perturbed_images, target_model_targets) in train_bpar:
             with torch.cuda.amp.autocast(enabled=self.fp16):
                 target_model_targets = target_model_targets.to(self.data_type).to(self.device)
@@ -270,7 +270,7 @@ class Trainer:
                 perturbed_images = perturbed_images.to(self.data_type).to(self.device)
                 hgd_outputs = self.model(perturbed_images)
                 self.target_model.eval()
-                denoised_images = perturbed_images - hgd_outputs
+                denoised_images = torch.clip(perturbed_images - hgd_outputs, min = 0, max = 255)
                                              
                 target_model_outputs = self.target_model(denoised_images)
                 loss = self.criterion(target_model_outputs, target_model_targets) 
@@ -281,22 +281,22 @@ class Trainer:
             self.scaler.scale(loss/self.accumlation_steps).backward()
         
             if ((i + 1) % self.accumlation_steps) == 0 or i == len(self.train_loader) - 1:
-                # with torch.no_grad():
-                #     total_norm_params += torch.norm(
-                #         torch.cat([p.grad.flatten() for p in self.model.parameters()]), p=2).item()
-                #     total_norm_grads += torch.norm(
-                #         torch.cat([p.flatten() for p in self.model.parameters()]), p=2).item()
+                with torch.no_grad():
+                    total_norm_params += torch.norm(
+                        torch.cat([p.grad.flatten() for p in self.model.parameters()]), p=2).item()
+                    total_norm_grads += torch.norm(
+                        torch.cat([p.flatten() for p in self.model.parameters()]), p=2).item()
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
                 self.optimizer.zero_grad(set_to_none=True)
 
             train_loss += loss.item() * target_model_targets.size(0)
 
-        # epoch_avg_norm_params = total_norm_params / num_params
-        # epoch_avg_norm_grads = total_norm_grads / num_params
+        epoch_avg_norm_params = total_norm_params / num_params
+        epoch_avg_norm_grads = total_norm_grads / num_params
 
-        # self.writer.add_scalar('avg_norm_params', epoch_avg_norm_params, global_step=epoch + 1)
-        # self.writer.add_scalar('avg_norm_grads', epoch_avg_norm_grads, global_step=epoch + 1)
+        self.writer.add_scalar('avg_norm_params', epoch_avg_norm_params, global_step=epoch + 1)
+        self.writer.add_scalar('avg_norm_grads', epoch_avg_norm_grads, global_step=epoch + 1)
         epoch_train_loss = train_loss / len(self.train_loader.dataset)
         return epoch_train_loss
 
@@ -401,7 +401,7 @@ if __name__ == "__main__":
         os.path.join(attacked_images_path,'val'))
     
 
-    batch_size_train = 8
+    batch_size_train = 16
     batch_size_val = 32
     train_dataloader = DataLoader(train_dataset,batch_size= batch_size_train,
                                    shuffle=True,pin_memory=True,num_workers=2,prefetch_factor=5)
@@ -411,7 +411,7 @@ if __name__ == "__main__":
     target_model = get_model(device)
 
     # optimizer = optim.SGD(model.parameters(),lr= 1e-4,momentum=0.9)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = optim.Adam(model.parameters(), lr=1e-2)
     trainer = Trainer(
         model,
         target_model,
@@ -421,7 +421,7 @@ if __name__ == "__main__":
         criterion= ExperimentalLoss(),
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,mode='min',factor=0.8,patience=5,min_lr=5e-5),
         fp16=True,
-        accumlation_steps = 16,
+        accumlation_steps = 8,
         )
     trainer.train(300)
     # trainer.val_epoch(1)
