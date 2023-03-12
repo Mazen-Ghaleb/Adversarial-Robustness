@@ -270,10 +270,12 @@ class Trainer:
                 perturbed_images = perturbed_images.to(self.data_type).to(self.device)
                 hgd_outputs = self.model(perturbed_images)
                 self.target_model.eval()
-                denoised_images = perturbed_images - hgd_outputs
+                denoised_images = torch.clip(perturbed_images - hgd_outputs,
+                                             min=0, max=255)
                 target_model_outputs = self.target_model(denoised_images)
                 loss = self.criterion(target_model_outputs, target_model_targets) 
                 train_bpar.set_description(f'train_loss: {loss.item():.4f}')
+                
 
 
             self.scaler.scale(loss/self.accumlation_steps).backward()
@@ -311,7 +313,8 @@ class Trainer:
                     hgd_outputs = self.model(perturbed_images)
                     
                     #hgd_outputs = hgd_outputs.type(torch.float32)
-                    denoised_images = perturbed_images - hgd_outputs
+                    denoised_images = torch.clip(perturbed_images - hgd_outputs,
+                                                 min=0, max=255)
                     target_model_outputs = self.target_model(denoised_images)
                     loss = self.criterion(target_model_outputs, target_model_targets)
                     val_bpar.set_description(f"val_loss: {loss:.4f}")
@@ -351,9 +354,9 @@ def get_HGD_model(device):
     dir_relative_path = os.path.relpath(os.path.dirname(__file__), os.getcwd())
     # get the path of the model and the expirement script
     model_path = os.path.join(dir_relative_path, "best_ckpt.pt")
-    model = HGD(width=0.5)
-    # model.load_state_dict(torch.load(model_path)['model_state_dict'])
-    model.load_state_dict(torch.load(model_path))
+    model = HGD2(width=1.0, bn_size=4, growth_rate=32)
+    model.load_state_dict(torch.load(model_path, device)['model_dict'])
+    # model.load_state_dict(torch.load(model_path, device))
     return model.to(device)
 
 

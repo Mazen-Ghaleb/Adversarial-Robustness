@@ -12,8 +12,6 @@ class DenseLayer(Module):
 
         # bottle neck
         self.layers = Sequential(
-            BatchNorm2d(num_input_features),
-            ReLU(inplace=True),
             Conv2d(
                 in_channels=num_input_features,
                 out_channels=bn_size * growth_rate,
@@ -23,13 +21,16 @@ class DenseLayer(Module):
                 bias=False),
             BatchNorm2d(bn_size * growth_rate),
             ReLU(inplace=True),
+
             Conv2d(
                 in_channels=growth_rate * bn_size,
                 out_channels=growth_rate,
                 kernel_size=3,
                 stride=1,
                 padding=1,
-                bias=False)
+                bias=False),
+            BatchNorm2d(growth_rate),
+            ReLU(inplace=True),
         )
 
     def forward(self, x):
@@ -64,22 +65,40 @@ class DenseBlock(ModuleDict):
 
 
 class Transition(Sequential):
-    def __init__(self, num_input_features, num_output_features, kernel_size=2, stride=2, padding=0):
+    def __init__(self, num_input_features, num_output_features,kernel_size=2,stride=2):
         super(Transition, self).__init__()
-        self.add_module('norm', BatchNorm2d(num_input_features))
-        self.add_module('relu', ReLU(inplace=True))
-        self.add_module('conv', Conv2d(num_input_features, num_output_features,
-                                       kernel_size=kernel_size, stride=stride,padding=1,bias=False))
-        self.add_module('dropout', Dropout2d(p=0.5,inplace=True))
-        # self.add_module('pool', Conv2d(kernel_size=2, stride=2))
+        self.add_module('conv0', Conv2d(num_input_features,
+                                       num_output_features,
+                                       kernel_size=1,
+                                       stride=1,
+                                       padding=0,
+                                       bias=False))
+
+        self.add_module('norm0', BatchNorm2d(num_output_features))
+        self.add_module('relu0', ReLU(inplace=True))
+
+        self.add_module('dropout0', Dropout2d(p=0.1,inplace=True))
+
+        self.add_module('conv1', Conv2d(num_output_features,
+                                        num_output_features,
+                                        kernel_size=kernel_size,
+                                        stride=stride,
+                                        padding=1))
+        self.add_module('norm1', BatchNorm2d(num_output_features))
+        self.add_module('relu1', ReLU(inplace=True))
+
+        self.add_module('dropout1', Dropout2d(p=0.1,inplace=True))
 
 class Fuse(Module):
     def __init__(self) -> None:
         super(Fuse, self).__init__()
 
     def forward(self, small_image, large_image):
-        upscaled_image = F.interpolate(small_image, size=large_image.shape[2:], mode="bilinear")
-        result_image = torch.cat((upscaled_image, large_image), dim=1)
+        upscaled_image = F.interpolate(small_image,
+                                       size=large_image.shape[2:],
+                                       mode="bilinear")
+        result_image = torch.cat((upscaled_image,
+                                  large_image), dim=1)
         return result_image 
 
 class HGD(Module):
@@ -88,34 +107,41 @@ class HGD(Module):
             width = 1.0,
             growth_rate=16,
             bn_size=2,
+            max_pixel_value=255
             ) -> None:
         
         super(HGD, self).__init__()
+
+        self.max_pixel_value = max_pixel_value
+
         start_channels = int(width * 64)
         self.stem = Sequential(
-            BatchNorm2d(3),
-            ReLU(inplace=True),
             Conv2d(in_channels=3, out_channels=start_channels,
                     kernel_size=7, stride=2, padding=3, bias=False),
-            Dropout2d(p=0.5,inplace=True),
             BatchNorm2d(start_channels),
             ReLU(inplace=True),
+
+            Dropout2d(p=0.1,inplace=True),
+
             Conv2d(in_channels=start_channels, out_channels=start_channels,
                     kernel_size=3, stride=2, padding=1, bias=False),
-            Dropout2d(p=0.5,inplace=True)
+            BatchNorm2d(start_channels),
+            ReLU(inplace=True),
+
+            Dropout2d(p=0.1,inplace=True)
         )
 
 
         self.reverse_stem = Sequential(
-            BatchNorm2d(start_channels),
-            ReLU(inplace=True),
             ConvTranspose2d(in_channels=start_channels, out_channels=start_channels,
                    kernel_size=4, stride=2, padding=1,bias=False),
-
             BatchNorm2d(start_channels),
             ReLU(inplace=True),
+
             ConvTranspose2d(in_channels=start_channels, out_channels=start_channels,
                    kernel_size=4, stride=2, padding=1, bias=False),
+            BatchNorm2d(start_channels),
+            ReLU(inplace=True),
         )
         
 
@@ -141,17 +167,13 @@ class HGD(Module):
                 forward_path_info["layers_outputs"])):
             dense_block = DenseBlock(num_layers, inp, bn_size, growth_rate)
             if i == 0:
-                kernel_size = 3
-                padding = 1
                 stride = 1
             else:
-                kernel_size = 2
-                padding = 2
                 stride = 2
 
             transition = Transition(
                 inp + num_layers * growth_rate, out,
-                  padding=padding, kernel_size=kernel_size, stride=stride)
+                kernel_size=3, stride=stride)
             self.add_module(f"forward_{i}", dense_block)
             self.add_module(f"forward_transition_{i}", transition)
 
@@ -161,19 +183,15 @@ class HGD(Module):
                 backward_path_info["layers_outputs"])):
 
             if i == len(backward_path_info["num_layers"]) - 1:
-                kernel_size = 3
-                padding = 1
                 stride = 1
             else:
-                kernel_size = 2
-                padding = 2
                 stride = 2
 
 
             dense_block = DenseBlock(num_layers, inp, bn_size, growth_rate)
             transition = Transition(
                 inp + num_layers * growth_rate, out,
-                  padding=padding, kernel_size=kernel_size, stride=stride)
+                  kernel_size=3, stride=stride)
             
             self.add_module(f"backward_{i}", dense_block)
             self.add_module(f"backward_transition_{i}", transition)
@@ -214,8 +232,8 @@ class HGD(Module):
         out_backward = self.reverse_stem(out_backward)
         out_backward = self.conv(out_backward)
 
-
-        return out_backward
+        final_output = out_backward.tanh() * self.max_pixel_value
+        return final_output
 
 
 
@@ -224,13 +242,10 @@ class HGD(Module):
 
 if __name__ == "__main__":
     from torchsummary import summary
-    model = HGD(width=0.5)
+    model = HGD(width=1.0, bn_size=4, growth_rate=32)
     input = torch.randn((1, 3, 640, 640))
     def count_parameters(model):
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(count_parameters(model))
 
-    print(model(input).shape)
-
-
-
+    print(model(input))
