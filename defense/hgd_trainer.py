@@ -162,21 +162,46 @@ class COCODataset(data.Dataset):
         return attacked_image, model_output
 
 class ExperimentalLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, regularization_factor=1e-4):
         super(ExperimentalLoss,self).__init__()
+        self.regularization_factor = regularization_factor
         self.iou = IOUloss()
 
-    def forward(self,denoised_output,benign_output):
+    def forward(self,
+                denoised_output: torch.Tensor,
+                benign_output,
+                noise: torch.Tensor,
+                denoised_images: torch.Tensor):
         
         denoised_output = denoised_output.type(torch.float32)
         benign_output = benign_output.type(torch.float32)
         
-        loss_bb = torch.pow(torch.abs(denoised_output[:,:,:4]-benign_output[:,:,:4]),1).mean()       
-        loss_obj = torch.pow(torch.abs(denoised_output[:,:,4]-benign_output[:,:,4]),1).mean()
-        loss_cls = torch.pow(torch.abs(denoised_output[:,:,5:]-benign_output[:,:,5:]),1).mean()
-        # loss = torch.linalg.norm((denoised_output-benign_output),
-        #                          dim=(1,2),ord=2).mean()
-        return loss_bb+loss_obj+loss_cls
+        bb_loss  = torch.abs(denoised_output[:,:,:4]-benign_output[:,:,:4]).mean()       
+        obj_loss = torch.abs(denoised_output[:,:,4]-benign_output[:,:,4]).mean()
+        cls_loss = torch.abs(denoised_output[:,:,5:]-benign_output[:,:,5:]).mean()
+
+        denoised_image_loss = torch.pow(torch.where(torch.logical_or(denoised_images > 255,
+                                                                      denoised_images < 0),
+                                          denoised_images,
+                                          torch.zeros_like(denoised_images)), 2).mean()
+        denoised_image_loss *= self.regularization_factor
+
+        noise_loss = torch.pow(torch.where(torch.logical_or(noise > 255, noise < -255),
+                                          noise,
+                                          torch.zeros_like(noise))
+                                          , 2).mean()
+        noise_loss *= self.regularization_factor
+        total_loss = bb_loss + obj_loss + cls_loss +  denoised_image_loss + noise_loss
+        losses = {
+            "noise_loss": noise_loss.item(),
+            "denoised_images_loss": denoised_image_loss.item(),
+            "bb_loss": bb_loss.item(),
+            "cls_loss": cls_loss.item(),
+            "obj_loss": obj_loss.item(),
+            "total_loss": total_loss,
+            }
+        
+        return losses 
 
 class Preprocessor:    
     def preprocess_model_input(self, img, input_size=[640, 640], swap=(2, 0, 1)):
@@ -268,11 +293,14 @@ class Trainer:
                 target_model_targets = target_model_targets.to(self.data_type).to(self.device)
 
                 perturbed_images = perturbed_images.to(self.data_type).to(self.device)
-                hgd_outputs = self.model(perturbed_images)
+                noise = self.model(perturbed_images)
                 self.target_model.eval()
-                denoised_images = perturbed_images - hgd_outputs
+                denoised_images = perturbed_images - noise
                 target_model_outputs = self.target_model(denoised_images)
-                loss = self.criterion(target_model_outputs, target_model_targets) 
+                losses = self.criterion(target_model_outputs, target_model_targets, noise, denoised_images) 
+                loss = losses["total_loss"]
+                # self.__visualize(loss, dict(self.model.named_parameters()) |
+                #                   dict(self.target_model.named_parameters()), "Train Loop6")
                 train_bpar.set_description(f'train_loss: {loss.item():.4f}')
 
 
@@ -289,14 +317,29 @@ class Trainer:
                 self.optimizer.zero_grad(set_to_none=True)
 
             train_loss += loss.item() * target_model_targets.size(0)
+            noise_loss += losses["noise_loss"] * target_model_targets.size(0)
+            denoised_loss += losses["denoised_images_loss"] * target_model_targets.size(0)
+            cls_loss += losses["cls_loss"] * target_model_targets.size(0)
+            obj_loss += losses["obj_loss"] * target_model_targets.size(0)
+            bb_loss += losses["bb_loss"] * target_model_targets.size(0)
 
         epoch_avg_norm_params = total_norm_params / num_params
         epoch_avg_norm_grads = total_norm_grads / num_params
 
         self.writer.add_scalar('avg_norm_params', epoch_avg_norm_params, global_step=epoch + 1)
         self.writer.add_scalar('avg_norm_grads', epoch_avg_norm_grads, global_step=epoch + 1)
+
         epoch_train_loss = train_loss / len(self.train_loader.dataset)
-        return epoch_train_loss
+        noise_loss = noise_loss / len(self.train_loader.dataset)
+        denoised_loss = denoised_loss / len(self.train_loader.dataset)
+        cls_loss = cls_loss / len(self.train_loader.dataset)
+        obj_loss =  obj_loss/ len(self.train_loader.dataset)
+        bb_loss = bb_loss / len(self.train_loader.dataset)
+
+        print(f"denoised_loss: {denoised_loss}, noise_loss: {noise_loss}, cls_loss: {cls_loss}")
+        print(f"obj_loss: {obj_loss}, bb_loss: {bb_loss}")
+
+        return epoch_train_loss 
 
     def val_epoch(self,epoch):
         self.model.eval()
@@ -308,12 +351,13 @@ class Trainer:
                 with torch.cuda.amp.autocast(enabled=self.fp16):
                     target_model_targets = target_model_targets.to(self.data_type).to(self.device)
                     perturbed_images = perturbed_images.to(self.data_type).to(self.device)
-                    hgd_outputs = self.model(perturbed_images)
+                    noise = self.model(perturbed_images)
                     
                     #hgd_outputs = hgd_outputs.type(torch.float32)
-                    denoised_images = perturbed_images - hgd_outputs
+                    denoised_images = perturbed_images - noise
                     target_model_outputs = self.target_model(denoised_images)
-                    loss = self.criterion(target_model_outputs, target_model_targets)
+                    losses = self.criterion(target_model_outputs, target_model_targets, noise, denoised_images)
+                    loss =  losses["total_loss"]
                     val_bpar.set_description(f"val_loss: {loss:.4f}")
                     val_loss += loss.item() * target_model_targets.size(0)
             epoch_val_loss = val_loss / len(self.val_loader.dataset)
@@ -343,7 +387,7 @@ class Trainer:
 
             train_losses.append(epoch_train_loss)
             val_losses.append(epoch_val_loss)
-            self.scheduler.step()
+            self.scheduler.step(epoch_val_loss)
         return train_losses, val_losses 
 
 
@@ -408,15 +452,19 @@ if __name__ == "__main__":
     target_model = get_model(device)
 
     # optimizer = optim.SGD(model.parameters(),lr= 1e-4,momentum=0.9)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = optim.Adam(model.parameters(), lr=1e-2)
     trainer = Trainer(
         model,
         target_model,
         train_dataloader,
         val_dataloader,
         device,optimizer,
-        criterion= ExperimentalLoss(),
-        scheduler = optim.lr_scheduler.StepLR(optimizer,step_size=1,gamma=0.98),
+        criterion= ExperimentalLoss(regularization_factor=1e-4),
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
+                                                         min_lr=5e-5,
+                                                         factor=0.8,
+                                                         patience=5,
+                                                          mode='min'),
         fp16=True,
         accumlation_steps = 16,
         )
