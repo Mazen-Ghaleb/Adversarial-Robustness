@@ -294,8 +294,6 @@ class Trainer:
         total_norm_grads = 0.0
         num_params = sum(p.numel() for p in self.model.parameters())
         for i, (perturbed_images, target_model_targets) in train_bpar:
-            if i == 1:
-                break
             with torch.cuda.amp.autocast(enabled=self.fp16):
                 target_model_targets = target_model_targets.to(self.data_type).to(self.device)
 
