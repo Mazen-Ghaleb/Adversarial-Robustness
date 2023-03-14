@@ -21,7 +21,7 @@ class SpeedLimitDetector:
     def __init__(self, device) -> None:
         self.device = device
         self.model = get_model(device)
-        self.classes = [100, 120, 20, 30, 40, 15, 50, 60, 70, 80]
+        self.classes = np.array([100, 120, 20, 30, 40, 15, 50, 60, 70, 80])
 
     def preprocess(self, img, input_size=[640, 640], swap=(2, 0, 1)):
         if len(img.shape) == 3:
@@ -188,7 +188,7 @@ class SpeedLimitDetector:
                 # if score > 0.9:
                 #     print(float(CLASSES[cls_ind])) # else:
                 #     print(-1.0)
-                return final_cls_inds, final_scores, final_boxes
+                return self.classes[np.asarray(final_cls_inds, dtype=np.uint8)],final_scores, final_boxes
             return None
     
     def detect_sign(self, image):

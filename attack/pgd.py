@@ -51,9 +51,12 @@ class PGD(AttackBase):
         model_output = self.model(images)
         if targets is None:
             targets = self.target_generator(model_output)
-        for i in tqdm(range(30)):
+        for i in tqdm(range(10)):
             perturbed_images = self.__pgd_step(perturbed_images, targets=targets, step_norm=2,
                                                 eps_norm=2, eps=eps)
-        return perturbed_images
+        if return_numpy:
+            return perturbed_images.detach().cpu().numpy()
+        else:
+            return perturbed_images
 
 
