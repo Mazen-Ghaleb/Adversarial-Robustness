@@ -70,7 +70,7 @@ class Transition(Sequential):
         self.add_module('relu', ReLU(inplace=True))
         self.add_module('conv', Conv2d(num_input_features, num_output_features,
                                        kernel_size=kernel_size, stride=stride,padding=1,bias=False))
-        self.add_module('dropout', Dropout2d(p=0.5,inplace=True))
+        self.add_module('dropout', Dropout2d(p=0.1,inplace=True))
         # self.add_module('pool', Conv2d(kernel_size=2, stride=2))
 
 class Fuse(Module):
@@ -97,12 +97,12 @@ class HGD(Module):
             ReLU(inplace=True),
             Conv2d(in_channels=3, out_channels=start_channels,
                     kernel_size=7, stride=2, padding=3, bias=False),
-            Dropout2d(p=0.5,inplace=True),
+            Dropout2d(p=0.1,inplace=True),
             BatchNorm2d(start_channels),
             ReLU(inplace=True),
             Conv2d(in_channels=start_channels, out_channels=start_channels,
                     kernel_size=3, stride=2, padding=1, bias=False),
-            Dropout2d(p=0.5,inplace=True)
+            Dropout2d(p=0.1,inplace=True)
         )
 
 

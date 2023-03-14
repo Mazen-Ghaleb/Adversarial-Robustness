@@ -285,10 +285,17 @@ class Trainer:
         train_bpar.set_description(f'train_loss: ')
         self.model.train()
         train_loss = 0.0
+        noise_loss = 0.0
+        denoised_loss = 0.0
+        cls_loss = 0.0
+        obj_loss = 0.0
+        bb_loss = 0.0
         total_norm_params = 0.0
         total_norm_grads = 0.0
         num_params = sum(p.numel() for p in self.model.parameters())
         for i, (perturbed_images, target_model_targets) in train_bpar:
+            if i == 1:
+                break
             with torch.cuda.amp.autocast(enabled=self.fp16):
                 target_model_targets = target_model_targets.to(self.data_type).to(self.device)
 
@@ -382,7 +389,7 @@ class Trainer:
 
             self.writer.add_scalar("Train Loss", epoch_train_loss, epoch + 1)
             self.writer.add_scalar("Val Loss", epoch_val_loss, epoch + 1)
-            self.writer.add_scalar("Learning rate", self.scheduler.get_lr(), epoch + 1)
+            #self.writer.add_scalar("Learning rate", self.scheduler.get_lr(), epoch + 1)
             self.writer.flush()
 
             train_losses.append(epoch_train_loss)
