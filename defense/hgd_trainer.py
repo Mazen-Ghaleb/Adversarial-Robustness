@@ -395,9 +395,9 @@ def get_HGD_model(device):
     dir_relative_path = os.path.relpath(os.path.dirname(__file__), os.getcwd())
     # get the path of the model and the expirement script
     model_path = os.path.join(dir_relative_path, "best_ckpt.pt")
-    model = HGD(width=0.5)
+    model = HGD2(width=1.0, growth_rate=32, bn_size=4)
     # model.load_state_dict(torch.load(model_path)['model_state_dict'])
-    model.load_state_dict(torch.load(model_path))
+    model.load_state_dict(torch.load(model_path, device)['model_dict'])
     return model.to(device)
 
 
