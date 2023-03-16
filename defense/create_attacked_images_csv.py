@@ -19,7 +19,7 @@ for image_path in tqdm(attacked_images_train):
     image_id = splits[0]
     
     train_dict['attacked_images'].append(image_name)
-    train_dict['benign_model_outputs'].append(f"{image_id}.npy")
+    train_dict['benign_model_outputs'].append(f"{image_id}.npz")
     
 df = pd.DataFrame(train_dict)
 df.to_csv(os.path.join(attacked_images_dataset_path,'train.csv'),index=None)
@@ -30,7 +30,7 @@ for image_path in tqdm(attacked_images_test):
     image_id = splits[0]
     
     test_dict['attacked_images'].append(image_name)
-    test_dict['benign_model_outputs'].append(f"{image_id}.npy")
+    test_dict['benign_model_outputs'].append(f"{image_id}.npz")
     
 df = pd.DataFrame(test_dict)
 df.to_csv(os.path.join(attacked_images_dataset_path,'test.csv'),index=None)
@@ -41,7 +41,7 @@ for image_path in tqdm(attacked_images_val):
     image_id = splits[0]
     
     val_dict['attacked_images'].append(image_name)
-    val_dict['benign_model_outputs'].append(f"{image_id}.npy")
+    val_dict['benign_model_outputs'].append(f"{image_id}.npz")
     
 df = pd.DataFrame(val_dict)
 df.to_csv(os.path.join(attacked_images_dataset_path,'val.csv'),index=None)

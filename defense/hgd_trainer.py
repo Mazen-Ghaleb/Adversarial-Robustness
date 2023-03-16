@@ -159,7 +159,7 @@ class COCODataset(data.Dataset):
           
         if self.transofms is not None:
             img, attacked_image = self.transofms(img, attacked_image)
-        return attacked_image, model_output
+        return attacked_image, (model_output[0], model_output[1], model_output[2])
 
 class ExperimentalLoss(nn.Module):
     def __init__(self, regularization_factor=1e-4):
@@ -173,13 +173,13 @@ class ExperimentalLoss(nn.Module):
                 noise: torch.Tensor,
                 denoised_images: torch.Tensor):
         
-        denoised_output = denoised_output.type(torch.float32)
-        benign_output = benign_output.type(torch.float32)
-        
-        bb_loss  = torch.abs(denoised_output[:,:,:4]-benign_output[:,:,:4]).mean()       
-        obj_loss = torch.abs(denoised_output[:,:,4]-benign_output[:,:,4]).mean()
-        cls_loss = torch.abs(denoised_output[:,:,5:]-benign_output[:,:,5:]).mean()
+        # denoised_output = denoised_output.type(torch.float32)
+        # benign_output = benign_output.type(torch.float32)
 
+        p3_loss = torch.abs(benign_output[0] - denoised_output[0]).mean()
+        p4_loss = torch.abs(benign_output[1] - denoised_output[1]).mean()
+        p5_loss = torch.abs(benign_output[2] - denoised_output[2]).mean()
+        
         denoised_image_loss = torch.pow(torch.where(torch.logical_or(denoised_images > 255,
                                                                       denoised_images < 0),
                                           denoised_images,
@@ -191,13 +191,13 @@ class ExperimentalLoss(nn.Module):
                                           torch.zeros_like(noise))
                                           , 2).mean()
         noise_loss *= self.regularization_factor
-        total_loss = bb_loss + obj_loss + cls_loss +  denoised_image_loss + noise_loss
+        total_loss = p3_loss + p4_loss + p5_loss +  denoised_image_loss + noise_loss
         losses = {
             "noise_loss": noise_loss.item(),
             "denoised_images_loss": denoised_image_loss.item(),
-            "bb_loss": bb_loss.item(),
-            "cls_loss": cls_loss.item(),
-            "obj_loss": obj_loss.item(),
+            "p3_loss": p3_loss.item(),
+            "p4_loss": p4_loss.item(),
+            "p5_loss": p5_loss.item(),
             "total_loss": total_loss,
             }
         
@@ -261,6 +261,24 @@ class Trainer:
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16)
         self.data_type = torch.float16 if self.fp16 else torch.float32
         self.accumlation_steps = accumlation_steps
+        self.epoch_losses = {
+            'train': {
+            'total_loss': 0.0, 
+            'p3_loss': 0.0,
+            'p4_loss': 0.0,
+            'p5_loss': 0.0,
+            'noise_loss': 0.0,
+            'denoised_images_loss':0.0,
+            },
+            'val': {
+            'total_loss': 0.0, 
+            'p3_loss': 0.0,
+            'p4_loss': 0.0,
+            'p5_loss': 0.0,
+            'noise_loss': 0.0,
+            'denoised_images_loss':0.0,
+            }
+        }
         self.writer = SummaryWriter()
 
         self.__disable_target_model_wieghts_grad()
@@ -279,17 +297,39 @@ class Trainer:
     def __visualize(self, value, parameters, name, format="pdf"):
         dot = make_dot(value, parameters)
         dot.render(name, format=format)
+    
+    def reset_loss(self, split):
+        self.epoch_losses[split]['total_loss'] = 0
+        self.epoch_losses[split]['p3_loss'] = 0
+        self.epoch_losses[split]['p4_loss'] = 0
+        self.epoch_losses[split]['p5_loss'] = 0
+        self.epoch_losses[split]['denoised_images_loss'] = 0
+        self.epoch_losses[split]['noise_loss'] = 0
+
+    def increment_loss(self, losses, size, split):
+        self.epoch_losses[split]['total_loss'] += losses['total_loss'].item() * size
+        self.epoch_losses[split]['p3_loss'] += losses['p3_loss'] * size
+        self.epoch_losses[split]['p4_loss'] += losses['p4_loss'] * size
+        self.epoch_losses[split]['p5_loss'] += losses['p5_loss'] * size
+        self.epoch_losses[split]['denoised_images_loss'] += losses['denoised_images_loss'] * size
+        self.epoch_losses[split]['noise_loss'] += losses['noise_loss'] * size
+
+    def normalize_loss(self, split):
+        self.epoch_losses[split]['total_loss'] /= len(self.train_loader.dataset)
+        self.epoch_losses[split]['denoised_images_loss'] /= len(self.train_loader.dataset)
+        self.epoch_losses[split]['noise_loss'] /= len(self.train_loader.dataset)
+        self.epoch_losses[split]['p3_loss'] /= len(self.train_loader.dataset)
+        self.epoch_losses[split]['p4_loss'] /= len(self.train_loader.dataset)
+        self.epoch_losses[split]['p5_loss'] /= len(self.train_loader.dataset)
+
+    
+    
 
     def train_epoch(self,epoch):
         train_bpar = tqdm(enumerate(self.train_loader), initial=1, total = len(self.train_loader),leave=None)
         train_bpar.set_description(f'train_loss: ')
         self.model.train()
-        train_loss = 0.0
-        noise_loss = 0.0
-        denoised_loss = 0.0
-        cls_loss = 0.0
-        obj_loss = 0.0
-        bb_loss = 0.0
+
         total_norm_params = 0.0
         total_norm_grads = 0.0
         num_params = sum(p.numel() for p in self.model.parameters())
@@ -321,34 +361,17 @@ class Trainer:
                 self.scaler.update()
                 self.optimizer.zero_grad(set_to_none=True)
 
-            train_loss += loss.item() * target_model_targets.size(0)
-            noise_loss += losses["noise_loss"] * target_model_targets.size(0)
-            denoised_loss += losses["denoised_images_loss"] * target_model_targets.size(0)
-            cls_loss += losses["cls_loss"] * target_model_targets.size(0)
-            obj_loss += losses["obj_loss"] * target_model_targets.size(0)
-            bb_loss += losses["bb_loss"] * target_model_targets.size(0)
+            self.increment_loss(losses, size= perturbed_images.shape[0], split='train')
 
+        self.normalize_train_loss('train')
         epoch_avg_norm_params = total_norm_params / num_params
         epoch_avg_norm_grads = total_norm_grads / num_params
 
         self.writer.add_scalar('avg_norm_params', epoch_avg_norm_params, global_step=epoch + 1)
         self.writer.add_scalar('avg_norm_grads', epoch_avg_norm_grads, global_step=epoch + 1)
 
-        epoch_train_loss = train_loss / len(self.train_loader.dataset)
-        noise_loss = noise_loss / len(self.train_loader.dataset)
-        denoised_loss = denoised_loss / len(self.train_loader.dataset)
-        cls_loss = cls_loss / len(self.train_loader.dataset)
-        obj_loss =  obj_loss/ len(self.train_loader.dataset)
-        bb_loss = bb_loss / len(self.train_loader.dataset)
-
-        print(f"denoised_loss: {denoised_loss}, noise_loss: {noise_loss}, cls_loss: {cls_loss}")
-        print(f"obj_loss: {obj_loss}, bb_loss: {bb_loss}")
-
-        return epoch_train_loss 
-
     def val_epoch(self,epoch):
         self.model.eval()
-        val_loss = 0.0
         val_bpar = tqdm(self.val_loader, initial=1, total=len(self.val_loader),leave=None)
         val_bpar.set_description('val_loss:')
         with torch.no_grad():
@@ -364,37 +387,36 @@ class Trainer:
                     losses = self.criterion(target_model_outputs, target_model_targets, noise, denoised_images)
                     loss =  losses["total_loss"]
                     val_bpar.set_description(f"val_loss: {loss:.4f}")
-                    val_loss += loss.item() * target_model_targets.size(0)
-            epoch_val_loss = val_loss / len(self.val_loader.dataset)
-        if (epoch_val_loss < self.best_val_loss):
+                    # val_loss += loss.item() * target_model_targets.size(0)
+                    self.increment_loss(losses, perturbed_images.shape[0], 'val')
+            self.normalize_val_loss('val')
+
+        if (self.epoch_losses['val']['epoch_val_loss'] < self.best_val_loss):
             torch.save({'model_dict':self.model.state_dict(),
                         'epoch': epoch},"best_ckpt.pt")
-            self.best_val_loss = epoch_val_loss
-        return epoch_val_loss
+            self.best_val_loss = self.epoch_losses['val']['epoch_val_loss']
+
 
     def train(self, n_epochs):
-        train_losses = []
-        val_losses = []
         self.no_epochs = n_epochs
         bpar = tqdm(range(n_epochs), initial=1)
         for epoch in bpar:
             bpar.set_description(f'Epoch {epoch + 1}, train_loss: {math.nan},val_loss: {math.nan}')
-            epoch_train_loss = self.train_epoch(epoch)
+            self.train_epoch(epoch)
+            epoch_train_loss = self.epoch_losses['train']['total_loss']
             bpar.set_description(f'Epoch {epoch+1}, train_loss: {epoch_train_loss:.4f},val_loss: ')
-            epoch_val_loss = self.val_epoch(epoch)
+            self.val_epoch(epoch)
+            epoch_val_loss = self.epoch_losses['val']['total_loss']
             bpar.set_description(fr'Epoch {epoch+1}, train_loss: {epoch_train_loss:.4f},val_loss:{epoch_val_loss:.4f}')
             print(f"Epoch number {epoch + 1}/{n_epochs}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
 
             self.writer.add_scalar("Train Loss", epoch_train_loss, epoch + 1)
             self.writer.add_scalar("Val Loss", epoch_val_loss, epoch + 1)
-            #self.writer.add_scalar("Learning rate", self.scheduler.get_lr(), epoch + 1)
             self.writer.flush()
 
-            train_losses.append(epoch_train_loss)
-            val_losses.append(epoch_val_loss)
-            self.scheduler.step(epoch_val_loss)
-        return train_losses, val_losses 
-
+            self.scheduler.step(self.losses['val']['total_losses'])
+            self.reset_loss('train')
+            self.reset_loss('val')
 
 def get_HGD_model(device):
     dir_relative_path = os.path.relpath(os.path.dirname(__file__), os.getcwd())
@@ -429,7 +451,7 @@ if __name__ == "__main__":
     dataset_path = os.path.join(
         os.path.dirname(os.getcwd()),'model','datasets','tsinghua_gtsdb_speedlimit')
     model_outputs_path= os.path.join(
-        os.path.dirname(os.getcwd()),'model','datasets','model_outputs')
+        os.path.dirname(os.getcwd()),'model','datasets','model_features')
     attacked_images_path = os.path.join(
         os.path.dirname(os.getcwd()),'model','datasets','attacked_images')
 
@@ -454,7 +476,7 @@ if __name__ == "__main__":
     val_dataloader = DataLoader(val_dataset,batch_size= batch_size_val,
                                  shuffle=True,pin_memory=True,num_workers=2,prefetch_factor=5)
 
-    target_model = get_model(device)
+    target_model = get_model(device).backbone
 
     # optimizer = optim.SGD(model.parameters(),lr= 1e-4,momentum=0.9)
     optimizer = optim.Adam(model.parameters(), lr=1e-2)
@@ -470,7 +492,7 @@ if __name__ == "__main__":
                                                          factor=0.8,
                                                          patience=5,
                                                           mode='min'),
-        fp16=True,
+        fp16=False,
         accumlation_steps = 16,
         )
     trainer.train(300)
