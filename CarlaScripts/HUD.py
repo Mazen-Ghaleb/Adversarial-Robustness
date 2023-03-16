@@ -150,29 +150,29 @@ class HUD(object):
                 self._info_text.append('% 4dm %s' % (d, vehicle_type))
                 no_printedVehicle += 1
 
-        if (world.model_flag):
-            if (world.model_speed is not None):
-                self._info_text += ['Model Speed: %d'% world.model_speed]
+        if (world.modelManager.model_flag):
+            if (world.modelManager.model_speed is not None):
+                self._info_text += ['Model Speed: %d'% world.modelManager.model_speed]
 
-            if (world.model_confidence is not None):
+            if (world.modelManager.model_confidence is not None):
                 self._info_text += ['Model Confidence: %.3f'%
-                                    world.model_confidence]
+                                    world.modelManager.model_confidence]
 
-        if (world.attack_model_flag):
-            if (world.attack_model_speed is not None):
-                self._info_text += ['Attacked Speed: %d'% world.attack_model_speed]
+        if (world.modelManager.attack_model_flag):
+            if (world.modelManager.attack_model_speed is not None):
+                self._info_text += ['Attacked Speed: %d'% world.modelManager.attack_model_speed]
 
-            if (world.attack_model_confidence is not None):
+            if (world.modelManager.attack_model_confidence is not None):
                 self._info_text += ['Attacked Confidence: %.3f'%
-                                    world.attack_model_confidence]
+                                    world.modelManager.attack_model_confidence]
         
-        if (world.defense_model_flag):
-            if (world.defense_model_speed is not None):
-                self._info_text += ['Defense Speed: %d'% world.defense_model_speed]
+        if (world.modelManager.defense_model_flag):
+            if (world.modelManager.defense_model_speed is not None):
+                self._info_text += ['Defense Speed: %d'% world.modelManager.defense_model_speed]
 
-            if (world.defense_model_confidence is not None):
+            if (world.modelManager.defense_model_confidence is not None):
                 self._info_text += ['Defense Confidence: %.3f'%
-                                    world.defense_model_confidence]
+                                    world.modelManager.defense_model_confidence]
 
     def toggle_info(self):
         self._show_info = not self._show_info

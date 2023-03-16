@@ -49,13 +49,13 @@ class BBHUD(object):
 
         self._info_text = [
             "{:<29}".format('Classification Bounding Box:'),
-            world.model_image,
+            world.modelManager.model_image,
             '',
             "{:<29}".format('Attack Bounding Box:'),
-            world.attack_model_image,
+            world.modelManager.attack_model_image,
             '',
             "{:<29}".format('Defense Bounding Box:'),
-            world.defense_model_image
+            world.modelManager.defense_model_image
         ]
 
     def toggle_info(self):

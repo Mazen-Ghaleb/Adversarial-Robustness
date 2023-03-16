@@ -105,29 +105,29 @@ class Demo:
         return self.__sort_labels(self.classes[classification_labels], classification_conf, detection_boxes)
 
     def run_with_defense(self, defense_type, attack_type):
-        pass
-        # defense_model = self.defenses[defense_type]
+        # pass
+        defense_model = self.defenses[defense_type]
         
-        # attack: AttackBase = self.attacks[attack_type]
-        # images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
+        attack: AttackBase = self.attacks[attack_type]
+        images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
 
-        # attack.model = self.detector.model
-        # attack.loss = yolox_loss
-        # attack.target_generator = yolox_target_generator
-        # perturbed_images = attack.generate_attack(images)
+        attack.model = self.detector.model
+        attack.loss = yolox_loss
+        attack.target_generator = yolox_target_generator
+        perturbed_images = attack.generate_attack(images)
         
-        # defense_model.eval()
-        # with torch.no_grad():
-        #     denoised_images = perturbed_images - defense_model(perturbed_images)
+        defense_model.eval()
+        with torch.no_grad():
+            denoised_images = perturbed_images - defense_model(perturbed_images)
 
-        # detection_output = self.detector.get_model_output(denoised_images)[0]
-        # detection_output = self.detector.decode_model_output(detection_output)
+        detection_output = self.detector.get_model_output(denoised_images)[0]
+        detection_output = self.detector.decode_model_output(detection_output)
         
-        # if detection_output is None:
-        #     return None
-        # else:
-        #     # classification_labels, classification_conf, detection_boxes =  detection_output
-        #     return detection_output
+        if detection_output is None:
+            return None
+        else:
+            # classification_labels, classification_conf, detection_boxes =  detection_output
+            return detection_output
 
 if __name__ == "__main__":
     import os
