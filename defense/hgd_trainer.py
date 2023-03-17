@@ -126,18 +126,19 @@ class Fuse(nn.Module):
 class COCODataset(data.Dataset):
     def __init__(
             self,
-            model_outputs_path,
+            orig_images_path,
             csv_file_path,
             attacked_images_path,
             transforms=None
             ):
         #self.coco = COCO(annotaiton_file)
-        self.model_outputs_path = model_outputs_path
+        self.orig_images_path = orig_images_path
         self.transofms = transforms
         self.attacked_images_path = attacked_images_path
         df = pd.read_csv(csv_file_path)
         self.attacked_images = df['attacked_images']
-        self.benign_model_outputs = df['benign_model_outputs']
+        self.orig_images = df['orig_images']
+        self.preprocessor = Preprocessor()
         #self.ids = list(sorted(self.coco.imgs.keys()))
 
     def __len__(self):
@@ -146,20 +147,27 @@ class COCODataset(data.Dataset):
     def __getitem__(self, index):
 
         attacked_image_name = self.attacked_images[index]
+        orig_image_name = self.orig_images[index]
+
         attacked_image_path = os.path.join(self.attacked_images_path,attacked_image_name)
+        orig_image_path = os.path.join(self.orig_images_path,orig_image_name)
+
         attacked_image = cv2.imread(attacked_image_path).transpose((2,0,1))
-        attacked_image = np.asarray(attacked_image,dtype=np.float32)
+        # attacked_image = np.asarray(attacked_image,dtype=np.float32)
 
-        model_output_path = os.path.join(self.model_outputs_path,
-                                          self.benign_model_outputs[index])
+        orig_image = cv2.imread(orig_image_path)
+        orig_image = self.preprocessor.preprocess_model_input(orig_image)
 
-        model_output = np.load(model_output_path, mmap_mode='r+')
+        # model_output_path = os.path.join(self.model_outputs_path,
+        #                                   self.benign_model_outputs[index])
 
+        # model_output = np.load(model_output_path, mmap_mode='r+')
+        # features = (model_output['p3'], model_output['p4'], model_output['p5'])
 
           
         if self.transofms is not None:
             img, attacked_image = self.transofms(img, attacked_image)
-        return attacked_image, (model_output[0], model_output[1], model_output[2])
+        return attacked_image, orig_image
 
 class ExperimentalLoss(nn.Module):
     def __init__(self, regularization_factor=1e-4):
@@ -191,13 +199,15 @@ class ExperimentalLoss(nn.Module):
                                           torch.zeros_like(noise))
                                           , 2).mean()
         noise_loss *= self.regularization_factor
+
         total_loss = p3_loss + p4_loss + p5_loss +  denoised_image_loss + noise_loss
+
         losses = {
-            "noise_loss": noise_loss.item(),
-            "denoised_images_loss": denoised_image_loss.item(),
-            "p3_loss": p3_loss.item(),
-            "p4_loss": p4_loss.item(),
-            "p5_loss": p5_loss.item(),
+            "noise_loss": noise_loss,
+            "denoised_images_loss": denoised_image_loss,
+            "p3_loss": p3_loss,
+            "p4_loss": p4_loss,
+            "p5_loss": p5_loss,
             "total_loss": total_loss,
             }
         
@@ -298,55 +308,75 @@ class Trainer:
         dot = make_dot(value, parameters)
         dot.render(name, format=format)
     
-    def reset_loss(self, split):
-        self.epoch_losses[split]['total_loss'] = 0
-        self.epoch_losses[split]['p3_loss'] = 0
-        self.epoch_losses[split]['p4_loss'] = 0
-        self.epoch_losses[split]['p5_loss'] = 0
-        self.epoch_losses[split]['denoised_images_loss'] = 0
-        self.epoch_losses[split]['noise_loss'] = 0
+    def write_to_tensorboard(self, losses, epoch, split):
+        for key in losses:
+            self.writer.add_scalar(f'{split}_key', losses[key].item(), epoch)
 
-    def increment_loss(self, losses, size, split):
-        self.epoch_losses[split]['total_loss'] += losses['total_loss'].item() * size
-        self.epoch_losses[split]['p3_loss'] += losses['p3_loss'] * size
-        self.epoch_losses[split]['p4_loss'] += losses['p4_loss'] * size
-        self.epoch_losses[split]['p5_loss'] += losses['p5_loss'] * size
-        self.epoch_losses[split]['denoised_images_loss'] += losses['denoised_images_loss'] * size
-        self.epoch_losses[split]['noise_loss'] += losses['noise_loss'] * size
+    @torch.no_grad()
+    def reset_loss(self, losses):
+        for key in losses:
+            losses[key] = 0
 
-    def normalize_loss(self, split):
-        self.epoch_losses[split]['total_loss'] /= len(self.train_loader.dataset)
-        self.epoch_losses[split]['denoised_images_loss'] /= len(self.train_loader.dataset)
-        self.epoch_losses[split]['noise_loss'] /= len(self.train_loader.dataset)
-        self.epoch_losses[split]['p3_loss'] /= len(self.train_loader.dataset)
-        self.epoch_losses[split]['p4_loss'] /= len(self.train_loader.dataset)
-        self.epoch_losses[split]['p5_loss'] /= len(self.train_loader.dataset)
+    @torch.no_grad()
+    def increment_loss(self, losses, losses_to_add, size):
+        for key in losses:
+            losses[key] += losses_to_add[key] * size
+
+    def normalize_loss(self, losses, dividor):
+        losses['total_loss'] /=dividor
+        losses['denoised_images_loss'] /=dividor
+        losses['noise_loss'] /=dividor
+        losses['p3_loss'] /=dividor
+        losses['p4_loss'] /=dividor
+        losses['p5_loss'] /=dividor
 
     
     
 
     def train_epoch(self,epoch):
-        train_bpar = tqdm(enumerate(self.train_loader), initial=1, total = len(self.train_loader),leave=None)
+        train_bpar = tqdm(enumerate(self.train_loader),
+                          initial=1, total = len(self.train_loader),leave=None)
         train_bpar.set_description(f'train_loss: ')
         self.model.train()
 
         total_norm_params = 0.0
         total_norm_grads = 0.0
+
+        epoch_losses = {
+            "noise_loss": 0.0,
+            "denoised_images_loss": 0.0,
+            "p3_loss": 0.0,
+            "p4_loss": 0.0,
+            "p5_loss": 0.0,
+            "total_loss": 0.0,
+            }
         num_params = sum(p.numel() for p in self.model.parameters())
-        for i, (perturbed_images, target_model_targets) in train_bpar:
+
+        for i, (perturbed_images, orig_images) in train_bpar:
             with torch.cuda.amp.autocast(enabled=self.fp16):
-                target_model_targets = target_model_targets.to(self.data_type).to(self.device)
+                orig_images = orig_images.to(self.data_type).to(self.device)
 
                 perturbed_images = perturbed_images.to(self.data_type).to(self.device)
                 noise = self.model(perturbed_images)
                 self.target_model.eval()
                 denoised_images = perturbed_images - noise
                 target_model_outputs = self.target_model(denoised_images)
-                losses = self.criterion(target_model_outputs, target_model_targets, noise, denoised_images) 
+
+                with torch.no_grad():
+                    target_model_targets = self.target_model(orig_images)
+
+                losses = self.criterion(target_model_outputs,
+                                        target_model_targets,
+                                        noise,
+                                        denoised_images) 
+
                 loss = losses["total_loss"]
                 # self.__visualize(loss, dict(self.model.named_parameters()) |
                 #                   dict(self.target_model.named_parameters()), "Train Loop6")
                 train_bpar.set_description(f'train_loss: {loss.item():.4f}')
+            
+            self.__visualize(loss, dict(self.target_model.named_parameters()) |
+                             dict(self.model.named_parameters()), "Features Loop")
 
 
             self.scaler.scale(loss/self.accumlation_steps).backward()
@@ -361,60 +391,96 @@ class Trainer:
                 self.scaler.update()
                 self.optimizer.zero_grad(set_to_none=True)
 
-            self.increment_loss(losses, size= perturbed_images.shape[0], split='train')
+            self.increment_loss(epoch_losses,losses,size= perturbed_images.shape[0])
 
-        self.normalize_train_loss('train')
+        self.normalize_train_loss(epoch_losses, len(self.train_loader.dataset))
+
         epoch_avg_norm_params = total_norm_params / num_params
         epoch_avg_norm_grads = total_norm_grads / num_params
 
         self.writer.add_scalar('avg_norm_params', epoch_avg_norm_params, global_step=epoch + 1)
         self.writer.add_scalar('avg_norm_grads', epoch_avg_norm_grads, global_step=epoch + 1)
 
+        return epoch_losses
+
+    @torch.no_grad()
+    def save_checkpoint(self, epoch_losses, epoch):
+        if (epoch_losses['total_loss'].item() < self.best_val_loss):
+            torch.save({'model_dict':self.model.state_dict(),
+                        'epoch': epoch},"best_ckpt.pt")
+            self.best_val_loss = self.epoch_losses['total_loss'].item()
+
+    @torch.no_grad()
     def val_epoch(self,epoch):
+        epoch_losses = {
+            "noise_loss": 0.0,
+            "denoised_images_loss": 0.0,
+            "p3_loss": 0.0,
+            "p4_loss": 0.0,
+            "p5_loss": 0.0,
+            "total_loss": 0.0,
+        }
+
         self.model.eval()
         val_bpar = tqdm(self.val_loader, initial=1, total=len(self.val_loader),leave=None)
         val_bpar.set_description('val_loss:')
-        with torch.no_grad():
-            for perturbed_images, target_model_targets in val_bpar:
-                with torch.cuda.amp.autocast(enabled=self.fp16):
-                    target_model_targets = target_model_targets.to(self.data_type).to(self.device)
-                    perturbed_images = perturbed_images.to(self.data_type).to(self.device)
-                    noise = self.model(perturbed_images)
-                    
-                    #hgd_outputs = hgd_outputs.type(torch.float32)
-                    denoised_images = perturbed_images - noise
-                    target_model_outputs = self.target_model(denoised_images)
-                    losses = self.criterion(target_model_outputs, target_model_targets, noise, denoised_images)
-                    loss =  losses["total_loss"]
-                    val_bpar.set_description(f"val_loss: {loss:.4f}")
-                    # val_loss += loss.item() * target_model_targets.size(0)
-                    self.increment_loss(losses, perturbed_images.shape[0], 'val')
-            self.normalize_val_loss('val')
+        for perturbed_images, orig_images in val_bpar:
+            with torch.cuda.amp.autocast(enabled=self.fp16):
+                orig_images = orig_images.to(self.data_type).to(self.device)
+                perturbed_images = perturbed_images.to(self.data_type).to(self.device)
+                noise = self.model(perturbed_images)
+                
+                #hgd_outputs = hgd_outputs.type(torch.float32)
+                denoised_images = perturbed_images - noise
+                target_model_outputs = self.target_model(denoised_images)
+                target_model_targets = self.target_model(orig_images)
+                losses = self.criterion(target_model_outputs, target_model_targets, noise, denoised_images)
+                loss =  losses["total_loss"]
+                val_bpar.set_description(f"val_loss: {loss:.4f}")
+                self.increment_loss(epoch_losses, losses, perturbed_images.shape[0])
+        self.normalize_loss(epoch_losses, len(self.val_loader.dataset))
+        
 
-        if (self.epoch_losses['val']['epoch_val_loss'] < self.best_val_loss):
-            torch.save({'model_dict':self.model.state_dict(),
-                        'epoch': epoch},"best_ckpt.pt")
-            self.best_val_loss = self.epoch_losses['val']['epoch_val_loss']
+        return epoch_losses
+    
+    def print_losses(self, losses, split):
+        for key in losses:
+           print(f"{split}_{key}:{losses[key].item():.4f}", end=', ')
+
+        print("")
+
 
 
     def train(self, n_epochs):
         self.no_epochs = n_epochs
         bpar = tqdm(range(n_epochs), initial=1)
         for epoch in bpar:
-            bpar.set_description(f'Epoch {epoch + 1}, train_loss: {math.nan},val_loss: {math.nan}')
-            self.train_epoch(epoch)
-            epoch_train_loss = self.epoch_losses['train']['total_loss']
-            bpar.set_description(f'Epoch {epoch+1}, train_loss: {epoch_train_loss:.4f},val_loss: ')
-            self.val_epoch(epoch)
-            epoch_val_loss = self.epoch_losses['val']['total_loss']
-            bpar.set_description(fr'Epoch {epoch+1}, train_loss: {epoch_train_loss:.4f},val_loss:{epoch_val_loss:.4f}')
-            print(f"Epoch number {epoch + 1}/{n_epochs}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
+            bpar.set_description(f"Epoch {epoch + 1}, train_loss: {math.nan}" \
+                                 f",val_loss: {math.nan}")
 
-            self.writer.add_scalar("Train Loss", epoch_train_loss, epoch + 1)
-            self.writer.add_scalar("Val Loss", epoch_val_loss, epoch + 1)
+            train_losses = self.train_epoch(epoch)
+            bpar.set_description(f"Epoch {epoch + 1}, train_loss: "\
+                                 f"{train_losses['total_loss']}" \
+                                 f",val_loss: {math.nan}")
+            self.print_losses(train_losses, "train")
+            val_losses = self.val_epoch(epoch)
+
+            bpar.set_description(f"Epoch {epoch + 1}, train_loss: "\
+                                 f"{train_losses['total_loss']}" \
+                                 f",val_loss: {val_losses['total_loss']}")
+            self.print_losses(val_losses, "val")
+
+            print(f"Epoch number {epoch + 1}/{n_epochs},"\
+                  f"train_loss: {train_losses['total_loss']},"\
+                  f" val_loss: {val_losses['total_loss']}")
+
+            self.scheduler.step(val_losses['total_losses'])
+
+            self.save_checkpoint(val_losses, epoch)
+
+            self.write_to_tensorboard(train_losses, epoch, 'train')
+            self.write_to_tensorboard(train_losses, epoch, 'val')
             self.writer.flush()
-
-            self.scheduler.step(self.losses['val']['total_losses'])
             self.reset_loss('train')
             self.reset_loss('val')
 
@@ -432,21 +498,9 @@ def get_HGD_model(device):
 if __name__ == "__main__":
     from torchsummary import summary
     np.random.seed(42)
-    # print(sum(p.numel() for p in hgd.parameters() if p.requires_grad))
-    
-    # model = HGD(width=0.5)
     model = HGD2(width=1, growth_rate=32, bn_size=4)
     model.eval()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    from prettytable import PrettyTable
-
-    def count_parameters(model, input_size):
-        from torchsummary import summary
-        summary(model, input_size)
-    
-    
-    
 
     dataset_path = os.path.join(
         os.path.dirname(os.getcwd()),'model','datasets','tsinghua_gtsdb_speedlimit')
@@ -459,12 +513,12 @@ if __name__ == "__main__":
         
     annotations_path = os.getcwd() #os.path.join(dataset_path,'annotations')
     train_dataset = COCODataset(
-        os.path.join(model_outputs_path,'train'),
+        os.path.join(dataset_path,'train2017'),
         os.path.join(attacked_images_path,'train.csv'),
         os.path.join(attacked_images_path,'train'))
     # test_dataset = COCODataset(os.path.join(dataset_path,'test2017'),os.path.join(annotations_path,'test2017.json'))
     val_dataset = COCODataset(
-        os.path.join(model_outputs_path,'val'),
+        os.path.join(dataset_path,'val2017'),
         os.path.join(attacked_images_path,'val.csv'),
         os.path.join(attacked_images_path,'val'))
     
@@ -487,11 +541,8 @@ if __name__ == "__main__":
         val_dataloader,
         device,optimizer,
         criterion= ExperimentalLoss(regularization_factor=1e-4),
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
-                                                         min_lr=5e-5,
-                                                         factor=0.8,
-                                                         patience=5,
-                                                          mode='min'),
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,min_lr=5e-5,factor=0.8,
+                                                         patience=5,mode='min'),
         fp16=False,
         accumlation_steps = 16,
         )
