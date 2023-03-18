@@ -321,7 +321,8 @@ class Trainer:
     def increment_loss(self, losses, losses_to_add, size):
         for key in losses:
             losses[key] += losses_to_add[key] * size
-
+    
+    @torch.no_grad()
     def normalize_loss(self, losses, dividor):
         losses['total_loss'] /=dividor
         losses['denoised_images_loss'] /=dividor
@@ -375,8 +376,8 @@ class Trainer:
                 #                   dict(self.target_model.named_parameters()), "Train Loop6")
                 train_bpar.set_description(f'train_loss: {loss.item():.4f}')
             
-            self.__visualize(loss, dict(self.target_model.named_parameters()) |
-                             dict(self.model.named_parameters()), "Features Loop")
+            # self.__visualize(loss, dict(self.target_model.named_parameters()) |
+            #                  dict(self.model.named_parameters()), "Features Loop")
 
 
             self.scaler.scale(loss/self.accumlation_steps).backward()
@@ -393,7 +394,7 @@ class Trainer:
 
             self.increment_loss(epoch_losses,losses,size= perturbed_images.shape[0])
 
-        self.normalize_train_loss(epoch_losses, len(self.train_loader.dataset))
+        self.normalize_loss(epoch_losses, len(self.train_loader.dataset))
 
         epoch_avg_norm_params = total_norm_params / num_params
         epoch_avg_norm_grads = total_norm_grads / num_params
@@ -474,7 +475,7 @@ class Trainer:
                   f"train_loss: {train_losses['total_loss']},"\
                   f" val_loss: {val_losses['total_loss']}")
 
-            self.scheduler.step(val_losses['total_losses'])
+            self.scheduler.step(val_losses['total_loss'])
 
             self.save_checkpoint(val_losses, epoch)
 
@@ -543,7 +544,7 @@ if __name__ == "__main__":
         criterion= ExperimentalLoss(regularization_factor=1e-4),
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,min_lr=5e-5,factor=0.8,
                                                          patience=5,mode='min'),
-        fp16=False,
+        fp16=True,
         accumlation_steps = 16,
         )
     trainer.train(300)

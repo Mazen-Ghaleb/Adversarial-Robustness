@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+print(device)
 
 def generate_attacked_samples(dataloader, split_name, eps = 4):
     attack = FGSM()
@@ -68,7 +68,7 @@ class COCODataset(Dataset):
 
 if __name__ == "__main__":
     datasets_path = os.path.join(os.path.dirname(os.getcwd()), 'model', 'datasets')
-
+    batch_size = 16
     try:
         shutil.rmtree(os.path.join(datasets_path, 'attacked_images', 'train'))
         shutil.rmtree(os.path.join(datasets_path, 'attacked_images', 'val'))
@@ -86,17 +86,17 @@ if __name__ == "__main__":
     annotations_path = os.path.join(dataset_path, 'annotations')
     train_dataset = COCODataset(os.path.join(
         dataset_path, 'train2017'), os.path.join(annotations_path, 'train2017.json'))
-    train_dataloader = DataLoader(train_dataset, batch_size=1, pin_memory=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, pin_memory=True)
 
     test_dataset = COCODataset(os.path.join(
         dataset_path, 'test2017'), os.path.join(annotations_path, 'test2017.json'))
-    test_dataloader = DataLoader(test_dataset, batch_size=1, pin_memory=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, pin_memory=True)
 
     val_dataset = COCODataset(os.path.join(
         dataset_path, 'val2017'), os.path.join(annotations_path, 'val2017.json'))
-    val_dataloader = DataLoader(val_dataset, batch_size=1, pin_memory=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, pin_memory=True)
 
-    eps_values = [1]
+    eps_values = [0,1,2,3,4,5]
 
     for eps in eps_values:
         generate_attacked_samples(train_dataloader, 'train',eps=eps)
