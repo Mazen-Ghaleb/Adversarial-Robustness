@@ -14,8 +14,11 @@ __pycache__
 .idea
 .vscode
 
-#data  and model
+#data and model
 model/datasets/**
 # model/YOLOX
 *.pth
 *.pt 
+
+#runs
+**/runs
