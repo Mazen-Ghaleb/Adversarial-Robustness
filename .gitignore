@@ -22,3 +22,5 @@ model/datasets/**
 
 #runs
 **/runs/
+
+**/adversarial_robustness.egg-info/

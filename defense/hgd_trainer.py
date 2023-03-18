@@ -403,13 +403,13 @@ class Trainer:
         self.writer.add_scalar('avg_norm_grads', epoch_avg_norm_grads, global_step=epoch + 1)
 
         return epoch_losses
-
+    
     @torch.no_grad()
     def save_checkpoint(self, epoch_losses, epoch):
         if (epoch_losses['total_loss'].item() < self.best_val_loss):
             torch.save({'model_dict':self.model.state_dict(),
                         'epoch': epoch},"best_ckpt.pt")
-            self.best_val_loss = self.epoch_losses['total_loss'].item()
+            self.best_val_loss = epoch_losses['total_loss'].item()
 
     @torch.no_grad()
     def val_epoch(self,epoch):
@@ -482,8 +482,8 @@ class Trainer:
             self.write_to_tensorboard(train_losses, epoch, 'train')
             self.write_to_tensorboard(train_losses, epoch, 'val')
             self.writer.flush()
-            self.reset_loss('train')
-            self.reset_loss('val')
+            # self.reset_loss('train')
+            # self.reset_loss('val')
 
 def get_HGD_model(device):
     dir_relative_path = os.path.relpath(os.path.dirname(__file__), os.getcwd())
@@ -526,10 +526,12 @@ if __name__ == "__main__":
 
     batch_size_train = 8
     batch_size_val = 32
+    num_workers = 2
+    prefetch_factor = 5
     train_dataloader = DataLoader(train_dataset,batch_size= batch_size_train,
-                                   shuffle=True,pin_memory=True,num_workers=2,prefetch_factor=5)
+                                   shuffle=True,pin_memory=True,num_workers=num_workers,prefetch_factor=prefetch_factor)
     val_dataloader = DataLoader(val_dataset,batch_size= batch_size_val,
-                                 shuffle=True,pin_memory=True,num_workers=2,prefetch_factor=5)
+                                 shuffle=True,pin_memory=True,num_workers=num_workers,prefetch_factor=prefetch_factor)
 
     target_model = get_model(device).backbone
 
