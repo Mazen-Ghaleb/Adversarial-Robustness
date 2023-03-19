@@ -15,114 +15,13 @@ import math
 from tqdm.auto import tqdm
 from torchviz import make_dot
 from yolox.models import IOUloss
-from defense.high_level_guided_denoiser import HGD as HGD2
+from defense.high_level_guided_denoiser import HGD
 import pandas as pd
 from torch.utils.tensorboard import SummaryWriter
 """
     implementation for high-level representation guided denoiser from
     https://openaccess.thecvf.com/content_cvpr_2018/html/Liao_Defense_Against_Adversarial_CVPR_2018_paper.html
 """
-class HGD(nn.Module):
-    def __init__(self, in_channels=3, width=1) -> None:
-        super(HGD, self).__init__()
-        ## forward_path
-        
-        self.forward_c2 = C2(in_channels = in_channels, out_channels=int(64 * width), kernel_size=3)
-        self.forward_c3_1 = C3(in_channels=int(64 * width), out_channels=int(128 * width), kernel_size=3)
-        self.forward_c3_2 = C3(in_channels=int(128 * width), out_channels=int(256 * width), kernel_size=3)
-        self.forward_c3_3 = C3(in_channels=int(256 * width), out_channels=int(256 * width), kernel_size=3)
-        self.forward_c3_4 = C3(in_channels=int(256 * width), out_channels=int(256 * width), kernel_size=3)
-
-        #backward path
-        self.backward_fuse = Fuse()
-        self.backward_c3_1 = C3(in_channels=int(512* width), out_channels=int(256 * width), kernel_size=3)
-
-        # self.backward_fuse_2 = Fuse()
-        self.backward_c3_2 = C3(in_channels=int(512 * width), out_channels=int(256 * width), kernel_size=3)
-
-        # self.backward_fuse_3 = Fuse()
-        self.backward_c3_3 = C3(in_channels=int(384 * width), out_channels=int(128 * width), kernel_size=3)
-
-        # self.backward_fuse_4 = Fuse()
-        self.backward_c2 = C2(in_channels=int(192 * width), out_channels=int(64 * width), kernel_size=3)
-        
-        self.conv = nn.Conv2d(in_channels=int(64 * width), out_channels=3, kernel_size=1, stride=1)
-
-    def forward(self, x) -> None:
-        #forward path
-        out_forward_c2 = self.forward_c2(x)
-
-        out_forward_c3_1 = self.forward_c3_1(out_forward_c2)
-        out_forward_c3_2 = self.forward_c3_2(out_forward_c3_1)
-        out_forward_c3_3 = self.forward_c3_3(out_forward_c3_2)
-        out_forward_c3_4 = self.forward_c3_4(out_forward_c3_3)
-
-        #backward path
-
-        out_backward = self.backward_fuse(out_forward_c3_4, out_forward_c3_3)
-        out_backward = self.backward_c3_1(out_backward)
-        out_backward = self.backward_fuse(out_backward, out_forward_c3_2)
-        out_backward = self.backward_c3_2(out_backward)
-        out_backward = self.backward_fuse(out_backward, out_forward_c3_1)
-        out_backward = self.backward_c3_3(out_backward)
-        out_backward = self.backward_fuse(out_backward, out_forward_c2)
-        out_backward = self.backward_c2(out_backward)
-        out_backward = self.conv(out_backward)
-
-        return out_backward
-
-
-
-
-
-class C(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1,padding=1):
-        super(C, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding,bias=False)
-        self.bn = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
-
-    def forward(self,  x):
-        x = self.conv(x)
-        x = self.bn(x)
-        x = self.relu(x)
-        #x = checkpoint(self.relu,x)
-        return x
-
-class C2(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size) -> None:
-        super(C2, self).__init__()
-        self.c_blocks = nn.Sequential(
-            C(in_channels, out_channels, kernel_size),
-            C(out_channels, out_channels, kernel_size),
-        )
-
-    def forward(self, x):
-        return self.c_blocks(x)
-
-class C3(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size) -> None:
-        super(C3, self).__init__()
-        self.c_blocks = nn.Sequential(
-            C(in_channels, out_channels, kernel_size, stride=2),
-            C(out_channels, out_channels, kernel_size, stride=1),
-            C(out_channels, out_channels, kernel_size, stride=1),
-        )
-
-    def forward(self, x):
-        return self.c_blocks(x)
-        
-
-
-class Fuse(nn.Module):
-    def __init__(self) -> None:
-        super(Fuse, self).__init__()
-
-    def forward(self, small_image, large_image):
-        upscaled_image = F.interpolate(small_image, size=large_image.shape[2:], mode="bilinear")
-        result_image = torch.cat((upscaled_image, large_image), dim=1)
-        return result_image 
-
 class COCODataset(data.Dataset):
     def __init__(
             self,
@@ -275,6 +174,7 @@ class Trainer:
             fp16=True,
             accumlation_steps = 4,
             ) -> None:
+
         self.model = model
         self.target_model = target_model
         self.device = device
@@ -405,6 +305,7 @@ class Trainer:
         torch.save({'model_dict':self.model.state_dict(),
                     'epoch': epoch,
                     'optimizer_state_dict': self.optimizer.state_dict(),
+                    'scheduler_state_dict': self.scheduler.state_dict(),
                     },"last_ckpt.pt")
 
     @torch.no_grad()
@@ -473,17 +374,24 @@ class Trainer:
             self.scheduler.step(val_losses['total_loss'])
 
             self.save_checkpoint(val_losses, epoch)
-            self.early_stopper.early_stop(val_losses['total_loss'])
-
+            
             self.write_to_tensorboard(train_losses, epoch, 'train')
             self.write_to_tensorboard(val_losses, epoch, 'val')
             self.writer.flush()
 
+            if self.early_stopper.early_stop(val_losses['total_loss']):
+                break
+
+
+"""TODO::
+ load the sched and optimizer states for train resume
+ separate the loading for training and loading for inference into two functions
+"""
 def get_HGD_model(device, checkpoint_name='best_ckpt.pt'):
     dir_relative_path = os.path.relpath(os.path.dirname(__file__), os.getcwd())
     # get the path of the model and the expirement script
     model_path = os.path.join(dir_relative_path, checkpoint_name)
-    model = HGD2(width=1.0, growth_rate=32, bn_size=4)
+    model = HGD(width=1.0, growth_rate=32, bn_size=4)
     # model.load_state_dict(torch.load(model_path)['model_state_dict'])
     model.load_state_dict(torch.load(model_path, device)['model_dict'])
     return model.to(device)
@@ -491,14 +399,14 @@ def get_HGD_model(device, checkpoint_name='best_ckpt.pt'):
 
     
 if __name__ == "__main__":
-    from torchsummary import summary
     np.random.seed(42)
 
     resume_training = False
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = get_HGD_model(device, 'last_ckpt.pt') if resume_training else \
-        HGD2(width=1, growth_rate=32, bn_size=4) 
+        HGD(width=1, growth_rate=32, bn_size=4) 
 
     dataset_path = os.path.join(
         os.path.dirname(os.getcwd()),'model','datasets','tsinghua_gtsdb_speedlimit')
