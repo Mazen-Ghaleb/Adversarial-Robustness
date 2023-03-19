@@ -117,11 +117,11 @@ class KeyboardControl(object):
                 elif event.key == K_F2:
                     world.bbhud.toggle_info()
                 elif event.key == K_F3:
-                    world.toggle_modelWindow()
+                    world.modelManager.toggle_modelWindow()
                 elif event.key == K_F4:
-                    world.toggle_attackWindow()
+                    world.modelManager.toggle_attackWindow()
                 elif event.key == K_F5:
-                    world.toggle_defenseWindow()
+                    world.modelManager.toggle_defenseWindow()
                 elif event.key == K_v and pygame.key.get_mods() & KMOD_SHIFT:
                     world.next_map_layer(reverse=True)
                 elif event.key == K_v:
@@ -141,82 +141,76 @@ class KeyboardControl(object):
                 elif event.key == K_c:
                     world.next_weather()
                 elif event.key == K_y:
-                    if (world.isOverrideSpeed):
-                        world.isOverrideSpeed = False
-                        world.player.disable_constant_velocity()
-                        world.constant_velocity_enabled = False
+                    if (world.modelManager.isOverrideSpeed):
+                        world.modelManager.isOverrideSpeed = False
+                        world.agentManager.set_agentStatus(False)
                         world.hud.notification("Disabled Auto-Speed limit")
                     else:
-                        if (self._autopilot_enabled):
-                            if world.constant_velocity_enabled:
-                                world.hud.notification(
-                                    "Can't enable Auto-Speed limit while Constant Speed is enabled")
-                            else:
-                                world.isOverrideSpeed = True
-                                # Activates model if not activated
-                                if (not world.model_flag):
-                                    world.toggle_model(True)
-                                    world.hud.notification(
-                                        "Auto-Speed limit enabled and Speed-limit Sign detection enabled")
-                                else:
-                                    world.hud.notification(
-                                        "Auto-Speed limit enabled")
+                        world.modelManager.isOverrideSpeed = True
+                        if not world.agentManager.agentStatus:
+                            world.agentManager.set_agentRandomDestination(world.map.get_spawn_points())
+                            world.agentManager.set_agentStatus(True)
+                        # Activates model if not activated
+                        if (not world.modelManager.model_flag):
+                            world.modelManager.set_model_flag(True, world.vehicle_camera, world.hud, world.agentManager)
+                            world.hud.notification(
+                                "Auto-Speed limit enabled and Speed-limit Sign detection enabled")
                         else:
                             world.hud.notification(
-                                "Can't enable Auto-Speed limit while Auto-pilot is disabled")
+                                "Auto-Speed limit enabled")
                 elif event.key == K_u:
-                    if (world.model_flag):
-                        world.toggle_model(False)
-                        world.toggle_attack_model(False)
-                        world.toggle_defense_model(False)
-                        world.model_image = np.zeros((640, 640, 3), dtype = np.uint8)
-                        world.attack_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
-                        world.defense_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
+                    if (world.modelManager.model_flag):
+                        world.modelManager.set_model_flag(False, world.vehicle_camera, world.hud, world.agentManager)
+                        world.modelManager.set_attack_model_flag(False)
+                        world.modelManager.set_defense_model_flag(False)
+                        world.modelManager.model_image = world.modelManager.getEmptyImage()
+                        world.modelManager.attack_model_image = world.modelManager.getEmptyImage()
+                        world.modelManager.defense_model_image = world.modelManager.getEmptyImage()
                         world.hud.notification(
                             "Speed-limit Sign detection disabled")
                     else:
-                        world.toggle_model(True)
+                        world.modelManager.set_model_flag(True, world.vehicle_camera, world.hud, world.agentManager)
                         world.hud.notification(
                             "Speed-limit Sign detection enabled")
                 elif event.key == K_e and pygame.key.get_mods() & KMOD_SHIFT:
-                    if (world.model_flag):
-                        if (world.defense_model_flag):
-                            world.toggle_defense_model(False)
-                            world.defense_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
-                            world.hud.notification("{} Defense Sign detection disabled".format(world.defense_methods[world.defense_currentMethodIndex]))
+                    if (world.modelManager.model_flag):
+                        if (world.modelManager.defense_model_flag):
+                            world.modelManager.set_defense_model_flag(False)
+                            world.modelManager.defense_model_image = world.modelManager.getEmptyImage()
+                            world.hud.notification("{} Defense Sign detection disabled".format(world.modelManager.defense_methods[world.modelManager.defense_currentMethodIndex]))
                         else:
-                            world.toggle_defense_model(True)
-                            world.hud.notification("{} Defense Sign detection enabled".format(world.defense_methods[world.defense_currentMethodIndex]))
+                            world.modelManager.set_defense_model_flag(True)
+                            world.hud.notification("{} Defense Sign detection enabled".format(world.modelManager.defense_methods[world.modelManager.defense_currentMethodIndex]))
                     else:
                         world.hud.notification(
                             "Can't enable Defense Sign detection while Sign detection is disabled")
                 elif event.key == K_e:
-                    if (world.model_flag):
-                        if (world.attack_model_flag):
-                            world.toggle_attack_model(False)
-                            world.attack_model_image = np.zeros((640, 640, 3), dtype = np.uint8)
-                            world.hud.notification("{} Attack Sign detection disabled".format(world.attack_methods[world.attack_currentMethodIndex]))
+                    if (world.modelManager.model_flag):
+                        if (world.modelManager.attack_model_flag):
+                            world.modelManager.set_attack_model_flag(False)
+                            world.modelManager.attack_model_image = world.modelManager.getEmptyImage()
+                            world.hud.notification("{} Attack Sign detection disabled".format(world.modelManager.attack_methods[world.modelManager.attack_currentMethodIndex]))
                         else:
-                            world.toggle_attack_model(True)
-                            world.hud.notification("{} Attack Sign detection enabled".format(world.attack_methods[world.attack_currentMethodIndex]))
+                            world.modelManager.set_attack_model_flag(True)
+                            world.hud.notification("{} Attack Sign detection enabled".format(world.modelManager.attack_methods[world.modelManager.attack_currentMethodIndex]))
                     else:
                         world.hud.notification(
                             "Can't enable Attack Sign detection while Sign detection is disabled")
                 elif event.key == K_f and pygame.key.get_mods() & KMOD_SHIFT:
-                    world.defense_currentMethodIndex = (world.defense_currentMethodIndex+1) % len(world.defense_methods)
-                    world.hud.notification("Changed Defense method to {}".format(world.defense_methods[world.defense_currentMethodIndex]))
+                    world.modelManager.defense_currentMethodIndex = (world.modelManager.defense_currentMethodIndex+1) % len(world.modelManager.defense_methods)
+                    world.hud.notification("Changed Defense method to {}".format(world.modelManager.defense_methods[world.modelManager.defense_currentMethodIndex]))
                 elif event.key == K_f:
-                    world.attack_currentMethodIndex = (world.attack_currentMethodIndex+1) % len(world.attack_methods)
-                    world.hud.notification("Changed Attack method to {}".format(world.attack_methods[world.attack_currentMethodIndex]))
+                    world.modelManager.attack_currentMethodIndex = (world.modelManager.attack_currentMethodIndex+1) % len(world.modelManager.attack_methods)
+                    world.hud.notification("Changed Attack method to {}".format(world.modelManager.attack_methods[world.modelManager.attack_currentMethodIndex]))
                 elif event.key == K_o:
-                    if (world.model_flag):
-                        world.modelPicture_flag = True
+                    if (world.modelManager.model_flag):
+                        world.modelManager.modelPicture_flag = True
                     else:
                         world.hud.notification(
                             "Speed-limit Sign detection is not enabled")
                 elif event.key == K_j:
-                    if (world.model_flag):
-                        world.modelClassificationPicture_flag = True
+                    if (world.modelManager.model_flag):
+                        world.modelManager.modelClassificationPicture_flag = True
                     else:
                         world.hud.notification(
                             "Speed-limit Sign detection is not enabled")
@@ -318,16 +312,7 @@ class KeyboardControl(object):
                         if self._autopilot_enabled:
                             world.hud.notification('Autopilot %s' % ('On'))
                         else:
-                            if (world.isOverrideSpeed):
-                                world.isOverrideSpeed = False
-                                world.player.disable_constant_velocity()
-                                world.constant_velocity_enabled = False
-                                world.hud.notification(
-                                    "Autopilot Off and Disabled Auto-Speed limit")
-                                world.model_result = None
-                                world.vehicle_camera.stop()
-                            else:
-                                world.hud.notification(
+                            world.hud.notification(
                                     'Autopilot %s' % ('Off'))
 
                     elif event.key == K_l and pygame.key.get_mods() & KMOD_CTRL:

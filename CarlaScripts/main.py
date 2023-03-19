@@ -50,8 +50,6 @@ from World import initial_spawn_point
 
 # Class imports
 from KeyboardControl import KeyboardControl
-from HUD import HUD
-from BBHUD import BBHUD
 from World import World
 from demo import Demo
 
@@ -98,26 +96,30 @@ def game_loop(args):
         display.fill((0, 0, 0))
         pygame.display.flip()
 
-        hud = HUD(args.width, args.height)
-        bbhud = BBHUD(args.width, args.height)
-        world = World(sim_world, hud, bbhud, args)
+        # hud = HUD(args.width, args.height)
+        # bbhud = BBHUD(args.width, args.height)
+        # agentManager = AgentManager(args.agent, args.behavior)
+        # modelManager = ModelManager()
+        # world = World(sim_world, args=args, hud= hud, bbhud= bbhud, agentManager= agentManager, modelManager= modelManager)
+        world = World(sim_world, args=args)
+
         for sign in world.world.get_actors().filter('traffic.speed_limit.90'):
             sign.destroy()
         
-        if (world.detector is None):
-            world.detector = Demo()
+        if (world.modelManager.detector is None):
+            world.modelManager.detector = Demo()
             
-            world.attack_methods.append(("FGSM"))
-            world.attack_methods.append(("IT-FGSM"))
-            world.defense_methods.append(("HGD"))
-            
-            # Initial cache of function
-            world.detector.preprocess(cv2.imread("../out/sample.png"))
-            temp_cache = world.detector.run_without_attack()
+            world.modelManager.attack_methods.append(("FGSM"))
+            world.modelManager.attack_methods.append(("IT-FGSM"))
+            world.modelManager.defense_methods.append(("HGD"))
             
             # Initial cache of function
-            temp_cache = world.detector.run_with_attack(world.attack_methods[0])
-            #temp_cache = it_fgsm(world.detector.model, temp_cache_img, world.device, 4, True, batch= False)
+            world.modelManager.detector.preprocess(cv2.imread("../out/sample.png"))
+            temp_cache = world.modelManager.detector.run_without_attack()
+            
+            # Initial cache of function
+            temp_cache = world.modelManager.detector.run_with_attack(world.modelManager.attack_methods[0])
+            #temp_cache = it_fgsm(world.modelManager.detector.model, temp_cache_img, world.device, 4, True, batch= False)
 
         controller = KeyboardControl(world, args.autopilot)
 
@@ -134,10 +136,10 @@ def game_loop(args):
             camera_bp, camera_init_trans, attach_to=world.player)
 
 
-        if (world.agent is not None):    
+        if (world.agentManager.agent is not None):    
             # destination =carla.Transform(carla.Location(x=291.9, y=-2.1, z=2), carla.Rotation(yaw=180))
             destination =carla.Location(x=291.9, y=-2.1, z=2) 
-            world.agent.set_destination(destination)
+            world.agentManager.agent.set_destination(destination)
                     
         while True:
             if args.sync:
@@ -150,42 +152,48 @@ def game_loop(args):
             world.render(display)
             pygame.display.flip()
             
-            if(world.model_image_window):
-                if cv2.getWindowProperty('Model Image', cv2.WND_PROP_VISIBLE) == 0 and not world.window_first_stats[0]:
-                    world.toggle_modelWindow()
+            if(world.modelManager.model_image_window):
+                if cv2.getWindowProperty('Model Image', cv2.WND_PROP_VISIBLE) == 0 and not world.modelManager.window_first_stats[0]:
+                    world.modelManager.toggle_modelWindow()
                 else:
                     # Display the Model Image in window
-                    cv2.imshow('Model Image', cv2.cvtColor(world.model_image, cv2.COLOR_BGR2RGB))
-                    world.window_first_stats[0] = False
+                    cv2.imshow('Model Image', cv2.cvtColor(world.modelManager.model_image, cv2.COLOR_BGR2RGB))
+                    world.modelManager.window_first_stats[0] = False
                 
-            if(world.attack_model_image_window):
-                if cv2.getWindowProperty('Attack Image', cv2.WND_PROP_VISIBLE) == 0 and not world.window_first_stats[1]:
-                    world.toggle_attackWindow()
+            if(world.modelManager.attack_model_image_window):
+                if cv2.getWindowProperty('Attack Image', cv2.WND_PROP_VISIBLE) == 0 and not world.modelManager.window_first_stats[1]:
+                    world.modelManager.toggle_attackWindow()
                 else:
                     # Display the Attack Image in window
-                    cv2.imshow('Attack Image', cv2.cvtColor(world.attack_model_image, cv2.COLOR_BGR2RGB))
-                    world.window_first_stats[1] = False
+                    cv2.imshow('Attack Image', cv2.cvtColor(world.modelManager.attack_model_image, cv2.COLOR_BGR2RGB))
+                    world.modelManager.window_first_stats[1] = False
             
-            if(world.defense_model_image_window):
-                if cv2.getWindowProperty('Defense Image', cv2.WND_PROP_VISIBLE) == 0 and not world.window_first_stats[2]:
-                    world.toggle_defenseWindow()
+            if(world.modelManager.defense_model_image_window):
+                if cv2.getWindowProperty('Defense Image', cv2.WND_PROP_VISIBLE) == 0 and not world.modelManager.window_first_stats[2]:
+                    world.modelManager.toggle_defenseWindow()
                 else:
                     # Display the Defense Image in window
-                    cv2.imshow('Defense Image', cv2.cvtColor(world.defense_model_image, cv2.COLOR_BGR2RGB))
-                    world.window_first_stats[2] = False
+                    cv2.imshow('Defense Image', cv2.cvtColor(world.modelManager.defense_model_image, cv2.COLOR_BGR2RGB))
+                    world.modelManager.window_first_stats[2] = False
             
-            if world.agent is not None:
-                if world.agent.done():
+            if world.agentManager.agentStatus:
+                if world.agentManager.agent.done():
                     if args.loop:
                         world.restart(initial_spawn_point)
-                        world.agent.set_destination(destination)
+                        world.agentManager.agent.set_destination(destination)
                         world.hud.notification("The target has been reached, resetting vehicle position", seconds=4.0)
                         print("The target has been reached, resetting vehicle position")
+                
+                    elif world.modelManager.isOverrideSpeed:
+                        world.agentManager.set_agentRandomDestination(world.map.get_spawn_points())
+                        world.hud.notification("The target has been reached, resetting vehicle position to random point", seconds=4.0)
+                        print("The target has been reached, resetting vehicle position")
                     else:
+                        world.hud.notification("The target has been reached, stopping the simulation", seconds=4.0)
                         print("The target has been reached, stopping the simulation")
                         break
 
-                control = world.agent.run_step()
+                control = world.agentManager.agent.run_step()
                 control.manual_gear_shift = False
                 world.player.apply_control(control)
 
