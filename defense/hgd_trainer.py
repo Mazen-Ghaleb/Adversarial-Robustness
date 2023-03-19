@@ -271,24 +271,6 @@ class Trainer:
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16)
         self.data_type = torch.float16 if self.fp16 else torch.float32
         self.accumlation_steps = accumlation_steps
-        self.epoch_losses = {
-            'train': {
-            'total_loss': 0.0, 
-            'p3_loss': 0.0,
-            'p4_loss': 0.0,
-            'p5_loss': 0.0,
-            'noise_loss': 0.0,
-            'denoised_images_loss':0.0,
-            },
-            'val': {
-            'total_loss': 0.0, 
-            'p3_loss': 0.0,
-            'p4_loss': 0.0,
-            'p5_loss': 0.0,
-            'noise_loss': 0.0,
-            'denoised_images_loss':0.0,
-            }
-        }
         self.writer = SummaryWriter()
 
         self.__disable_target_model_wieghts_grad()
@@ -310,12 +292,7 @@ class Trainer:
     
     def write_to_tensorboard(self, losses, epoch, split):
         for key in losses:
-            self.writer.add_scalar(f'{split}_key', losses[key].item(), epoch)
-
-    @torch.no_grad()
-    def reset_loss(self, losses):
-        for key in losses:
-            losses[key] = 0
+            self.writer.add_scalar(f'{split}_{key}', losses[key].item(), epoch)
 
     @torch.no_grad()
     def increment_loss(self, losses, losses_to_add, size):
@@ -324,13 +301,8 @@ class Trainer:
     
     @torch.no_grad()
     def normalize_loss(self, losses, dividor):
-        losses['total_loss'] /=dividor
-        losses['denoised_images_loss'] /=dividor
-        losses['noise_loss'] /=dividor
-        losses['p3_loss'] /=dividor
-        losses['p4_loss'] /=dividor
-        losses['p5_loss'] /=dividor
-
+        for key in losses:
+            losses[key] /= dividor
     
     
 
@@ -480,10 +452,8 @@ class Trainer:
             self.save_checkpoint(val_losses, epoch)
 
             self.write_to_tensorboard(train_losses, epoch, 'train')
-            self.write_to_tensorboard(train_losses, epoch, 'val')
+            self.write_to_tensorboard(val_losses, epoch, 'val')
             self.writer.flush()
-            # self.reset_loss('train')
-            # self.reset_loss('val')
 
 def get_HGD_model(device):
     dir_relative_path = os.path.relpath(os.path.dirname(__file__), os.getcwd())
