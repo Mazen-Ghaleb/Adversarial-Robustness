@@ -242,6 +242,24 @@ class Preprocessor:
         return padded_img
 
 
+class EarlyStopper:
+    def __init__(self, patience=10):
+        self.patience = patience
+        self.counter = 0
+        self.min_validation_loss = np.inf
+
+    def early_stop(self, validation_loss):
+        if validation_loss < self.min_validation_loss:
+            self.min_validation_loss = validation_loss
+            self.counter = 0
+        else:
+            self.counter += 1
+
+        if self.counter >= self.patience:
+            return True
+        else:
+            return False
+
 class Trainer:
     def __init__(
             self,
@@ -253,6 +271,7 @@ class Trainer:
             optimizer,
             criterion,
             scheduler,
+            early_stopper,
             fp16=True,
             accumlation_steps = 4,
             ) -> None:
@@ -272,6 +291,7 @@ class Trainer:
         self.data_type = torch.float16 if self.fp16 else torch.float32
         self.accumlation_steps = accumlation_steps
         self.writer = SummaryWriter()
+        self.early_stopper = early_stopper
 
         self.__disable_target_model_wieghts_grad()
 
@@ -377,8 +397,15 @@ class Trainer:
     def save_checkpoint(self, epoch_losses, epoch):
         if (epoch_losses['total_loss'].item() < self.best_val_loss):
             torch.save({'model_dict':self.model.state_dict(),
-                        'epoch': epoch},"best_ckpt.pt")
+                        'epoch': epoch,
+                        'optimizer_state_dict': self.optimizer.state_dict(),
+                        },"best_ckpt.pt")
             self.best_val_loss = epoch_losses['total_loss'].item()
+
+        torch.save({'model_dict':self.model.state_dict(),
+                    'epoch': epoch,
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    },"last_ckpt.pt")
 
     @torch.no_grad()
     def val_epoch(self,epoch):
@@ -416,7 +443,6 @@ class Trainer:
     def print_losses(self, losses, split):
         for key in losses:
            print(f"{split}_{key}:{losses[key].item():.4f}", end=', ')
-
         print("")
 
 
@@ -447,15 +473,16 @@ class Trainer:
             self.scheduler.step(val_losses['total_loss'])
 
             self.save_checkpoint(val_losses, epoch)
+            self.early_stopper.early_stop(val_losses['total_loss'])
 
             self.write_to_tensorboard(train_losses, epoch, 'train')
             self.write_to_tensorboard(val_losses, epoch, 'val')
             self.writer.flush()
 
-def get_HGD_model(device):
+def get_HGD_model(device, checkpoint_name='best_ckpt.pt'):
     dir_relative_path = os.path.relpath(os.path.dirname(__file__), os.getcwd())
     # get the path of the model and the expirement script
-    model_path = os.path.join(dir_relative_path, "best_ckpt.pt")
+    model_path = os.path.join(dir_relative_path, checkpoint_name)
     model = HGD2(width=1.0, growth_rate=32, bn_size=4)
     # model.load_state_dict(torch.load(model_path)['model_state_dict'])
     model.load_state_dict(torch.load(model_path, device)['model_dict'])
@@ -466,9 +493,12 @@ def get_HGD_model(device):
 if __name__ == "__main__":
     from torchsummary import summary
     np.random.seed(42)
-    model = HGD2(width=1, growth_rate=32, bn_size=4)
-    model.eval()
+
+    resume_training = False
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    model = get_HGD_model(device, 'last_ckpt.pt') if resume_training else \
+        HGD2(width=1, growth_rate=32, bn_size=4) 
 
     dataset_path = os.path.join(
         os.path.dirname(os.getcwd()),'model','datasets','tsinghua_gtsdb_speedlimit')
@@ -513,6 +543,7 @@ if __name__ == "__main__":
         criterion= ExperimentalLoss(regularization_factor=1e-4),
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,min_lr=5e-5,factor=0.8,
                                                          patience=5,mode='min'),
+        early_stopper= EarlyStopper(patience=10),
         fp16=True,
         accumlation_steps = 16,
         )
