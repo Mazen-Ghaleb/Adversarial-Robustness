@@ -294,12 +294,10 @@ class Trainer:
         for key in losses:
             self.writer.add_scalar(f'{split}_{key}', losses[key].item(), epoch)
 
-    @torch.no_grad()
     def increment_loss(self, losses, losses_to_add, size):
         for key in losses:
             losses[key] += losses_to_add[key] * size
     
-    @torch.no_grad()
     def normalize_loss(self, losses, dividor):
         for key in losses:
             losses[key] /= dividor
@@ -376,7 +374,6 @@ class Trainer:
 
         return epoch_losses
     
-    @torch.no_grad()
     def save_checkpoint(self, epoch_losses, epoch):
         if (epoch_losses['total_loss'].item() < self.best_val_loss):
             torch.save({'model_dict':self.model.state_dict(),
