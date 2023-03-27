@@ -25,6 +25,7 @@ try:
     from pygame.locals import K_F3
     from pygame.locals import K_F4
     from pygame.locals import K_F5
+    from pygame.locals import K_F6
     from pygame.locals import K_LEFT
     from pygame.locals import K_PERIOD
     from pygame.locals import K_RIGHT
@@ -122,6 +123,14 @@ class KeyboardControl(object):
                     world.modelManager.toggle_attackWindow()
                 elif event.key == K_F5:
                     world.modelManager.toggle_defenseWindow()
+                elif event.key ==K_F6:
+                    if (world.modelManager.decouple_flag):
+                        world.modelManager.set_decouple_flag(False)
+                        world.hud.notification("Disabled decoupling of the models")
+                    else:
+                        world.modelManager.set_decouple_flag(True)
+                        world.modelManager.empty_model_results()
+                        world.hud.notification("Enabled decoupling of the models")
                 elif event.key == K_v and pygame.key.get_mods() & KMOD_SHIFT:
                     world.next_map_layer(reverse=True)
                 elif event.key == K_v:

@@ -82,6 +82,7 @@ class Demo:
         attack.loss = yolox_loss
         attack.target_generator = yolox_target_generator
         perturbed_images = attack.generate_attack(images)
+        self.detector_attacked_images = perturbed_images
 
         detection_output = self.detector.get_model_output(perturbed_images)[0]
         detection_output = self.detector.decode_model_output(detection_output)
@@ -95,7 +96,6 @@ class Demo:
         cropped_signs, detection_boxes = self.__crop_signs(detection_boxes)
         cropped_signs = torch.from_numpy(cropped_signs).float().to(self.device)
 
-
         attack.model = self.classifier.model
         attack.loss = classifier_loss
         attack.target_generator = classifier_target_generator
@@ -104,21 +104,26 @@ class Demo:
         classification_labels, classification_conf =  self.classifier.classify_signs(perturbed_cropped_signs)
         return self.__sort_labels(self.classes[classification_labels], classification_conf, detection_boxes)
 
-    def run_with_defense(self, defense_type, attack_type):
-        # pass
+    def run_with_defense(self, defense_type, attack_type = "None", generate_attack = True):
         defense_model = self.defenses[defense_type]
-        
-        attack: AttackBase = self.attacks[attack_type]
+        defense_model.eval()
+
         images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
 
-        attack.model = self.detector.model
-        attack.loss = yolox_loss
-        attack.target_generator = yolox_target_generator
-        perturbed_images = attack.generate_attack(images)
-        
-        defense_model.eval()
-        with torch.no_grad():
-            denoised_images = perturbed_images - defense_model(perturbed_images)
+        if attack_type == "None":
+            with torch.no_grad():
+                denoised_images = images - defense_model(images)
+        elif generate_attack:
+            attack: AttackBase = self.attacks[attack_type]
+            attack.model = self.detector.model
+            attack.loss = yolox_loss
+            attack.target_generator = yolox_target_generator
+            perturbed_images = attack.generate_attack(images)
+            with torch.no_grad():
+                denoised_images = perturbed_images - defense_model(perturbed_images)
+        elif not generate_attack:
+            with torch.no_grad():
+                denoised_images = self.detector_attacked_images - defense_model(self.detector_attacked_images)
 
         detection_output = self.detector.get_model_output(denoised_images)[0]
         detection_output = self.detector.decode_model_output(detection_output)

@@ -89,6 +89,7 @@ Model controls
     F3           : toggle Model Image Window
     F4           : toggle Attack Image Window
     F5           : toggle Defense Image Window
+    F6           : toggle decoupling of models
     Y            : toggle auto-speed limit
     U            : toggle Speed-limit Sign detection
     E            : toggle Attack Sign detection method

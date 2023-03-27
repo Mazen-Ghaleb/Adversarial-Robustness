@@ -40,6 +40,7 @@ class ModelManager(object):
         self.model_flag = False
         self.attack_model_flag = False
         self.defense_model_flag = False
+        self.decouple_flag = False
         self.modelPicture_flag = False
         self.modelClassificationPicture_flag = False
 
@@ -96,7 +97,29 @@ class ModelManager(object):
     
     def set_defense_model_flag(self, flag:bool):  # True to activate defense model and False to stop defense model
         self.defense_model_flag = flag
-            
+    
+    def set_decouple_flag(self, flag:bool):  # True to activate decoupling (Run only one model at a time)
+        self.decouple_flag = flag
+    
+    def empty_model_results(self):
+        # Empty Classification Results
+        self.model_result = None
+        self.model_speed = None
+        self.model_confidence = None
+        self.model_image = self.getEmptyImage()
+        
+        # Empty Attack Results
+        self.attack_model_result = None
+        self.attack_model_speed = None
+        self.attack_model_confidence = None
+        self.attack_model_image = self.getEmptyImage()
+        
+        # Empty Defense Results
+        self.defense_model_result = None
+        self.defense_model_speed = None
+        self.defense_model_confidence = None
+        self.defense_model_image = self.getEmptyImage()
+
     def to_bgr_array(self, image):
         """Convert a CARLA raw image to a BGR numpy array."""
         array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
@@ -104,7 +127,7 @@ class ModelManager(object):
         array = array[:, :, :3]
         return array
 
-    def drawBoundingBox(self, boxes, image: np.ndarray, classifications, confidences, color =(0, 255, 0), font = cv2.FONT_HERSHEY_SIMPLEX, thickness = 2):
+    def drawBoundingBox(self, boxes, image: np.ndarray, classifications, confidences, color =(255, 165, 0), font = cv2.FONT_HERSHEY_SIMPLEX, thickness = 2):
         for box,classification,confidence in zip(boxes,classifications,confidences):
             detected_image = cv2.rectangle(image, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), color, thickness)
             detected_image = cv2.putText(detected_image, "{}: {:.2f} %".format(int(classification), confidence*100), 
@@ -123,22 +146,40 @@ class ModelManager(object):
                 hud.notification("Saved current view of Speed-limit Sign detection")
                 self.modelPicture_flag = False
 
-            self.calculate_classification(hud, np.array(image, copy=True))
-            
-            if self.defense_model_flag and self.attack_model_flag:
-                self.calculate_attack(np.array(image, copy=True))
-                self.calculate_defense(np.array(image, copy=True))
-                self.calculate_overrideSpeed(agentManager, self.defense_model_speed)
-            elif self.defense_model_flag:
-                self.calculate_defense(np.array(image, copy=True))
-                self.calculate_overrideSpeed(agentManager, self.defense_model_speed)
-            elif self.attack_model_flag:
-                self.calculate_attack(np.array(image, copy=True))
-                self.calculate_overrideSpeed(agentManager, self.attack_model_speed)
-            else:
-                self.calculate_overrideSpeed(agentManager, self.model_speed)
+            if (self.decouple_flag):
 
-            print("{:<25}".format("Total Model time"),": {:.3f}s".format(timer()-total_start))
+                if self.defense_model_flag and self.attack_model_flag: # Only Defense on Attacked Model
+                    self.calculate_defense(np.array(image, copy=True), self.attack_methods[self.attack_currentMethodIndex]) 
+                    self.calculate_overrideSpeed(agentManager, self.defense_model_speed)
+                elif self.attack_model_flag: # Only Attack on Benign Image
+                    self.calculate_attack(np.array(image, copy=True))
+                    self.calculate_overrideSpeed(agentManager, self.attack_model_speed)
+                elif self.defense_model_flag:
+                    self.calculate_defense(np.array(image, copy=True)) # Only Defense on Benign Image
+                    self.calculate_overrideSpeed(agentManager, self.defense_model_speed)
+                else: # Only Normal Classification on Benign Image
+                    self.calculate_classification(hud, np.array(image, copy=True))
+                    self.calculate_overrideSpeed(agentManager, self.model_speed)
+
+                print("{:<25}".format("Total Model time"),": {:.3f}s".format(timer()-total_start))
+                
+            else:
+                self.calculate_classification(hud, np.array(image, copy=True))
+        
+                if self.defense_model_flag and self.attack_model_flag:
+                    self.calculate_attack(np.array(image, copy=True))
+                    self.calculate_defense(np.array(image, copy=True), self.attack_methods[self.attack_currentMethodIndex], generate_attack=False)
+                    self.calculate_overrideSpeed(agentManager, self.defense_model_speed)
+                elif self.attack_model_flag:
+                    self.calculate_attack(np.array(image, copy=True))
+                    self.calculate_overrideSpeed(agentManager, self.attack_model_speed)
+                elif self.defense_model_flag:
+                    self.calculate_defense(np.array(image, copy=True))
+                    self.calculate_overrideSpeed(agentManager, self.defense_model_speed)
+                else:
+                    self.calculate_overrideSpeed(agentManager, self.model_speed)
+
+                print("{:<25}".format("Total Model time"),": {:.3f}s".format(timer()-total_start))
             
         self.model_currentTick = (self.model_currentTick+1) %self.model_tickRate
 
@@ -183,10 +224,10 @@ class ModelManager(object):
             print("{:<25}".format("{} Attack Model time".format(self.attack_methods[self.attack_currentMethodIndex])),
             ": {:.3f}s No Sign Detected".format(timer()-attack_start))
 
-    def calculate_defense(self, image):
+    def calculate_defense(self, image, attack_method = "None", generate_attack = True):
         defense_start = timer()
         self.defense_model_result = self.detector.run_with_defense(self.defense_methods[self.defense_currentMethodIndex],
-                                                                    self.attack_methods[self.attack_currentMethodIndex])
+                                                                    attack_method, generate_attack)
         
         if self.defense_model_result is not None:
             self.defense_model_speed = self.defense_model_result[0][0]
