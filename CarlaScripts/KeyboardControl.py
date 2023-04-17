@@ -211,6 +211,19 @@ class KeyboardControl(object):
                 elif event.key == K_f:
                     world.modelManager.attack_currentMethodIndex = (world.modelManager.attack_currentMethodIndex+1) % len(world.modelManager.attack_methods)
                     world.hud.notification("Changed Attack method to {}".format(world.modelManager.attack_methods[world.modelManager.attack_currentMethodIndex]))
+                elif event.key == K_o and pygame.key.get_mods() & KMOD_SHIFT:
+                    if (world.modelManager.model_flag):
+                        if(world.modelManager.modelRecord_flag):
+                            world.modelManager.set_modelRecord_flag(False)
+                            world.hud.notification(
+                            "Disabled model image recording")
+                        else:
+                            world.modelManager.set_modelRecord_flag(True)
+                            world.hud.notification(
+                            "Enabled model image recording")
+                    else:
+                        world.hud.notification(
+                            "Speed-limit Sign detection is not enabled")
                 elif event.key == K_o:
                     if (world.modelManager.model_flag):
                         world.modelManager.modelPicture_flag = True

@@ -96,11 +96,6 @@ def game_loop(args):
         display.fill((0, 0, 0))
         pygame.display.flip()
 
-        # hud = HUD(args.width, args.height)
-        # bbhud = BBHUD(args.width, args.height)
-        # agentManager = AgentManager(args.agent, args.behavior)
-        # modelManager = ModelManager()
-        # world = World(sim_world, args=args, hud= hud, bbhud= bbhud, agentManager= agentManager, modelManager= modelManager)
         world = World(sim_world, args=args)
 
         for sign in world.world.get_actors().filter('traffic.speed_limit.90'):
@@ -137,10 +132,10 @@ def game_loop(args):
 
 
         if (world.agentManager.agent is not None):    
-            # destination =carla.Transform(carla.Location(x=291.9, y=-2.1, z=2), carla.Rotation(yaw=180))
             destination =carla.Location(x=291.9, y=-2.1, z=2) 
             world.agentManager.agent.set_destination(destination)
-                    
+            # world.agentManager.set_agentRandomDestination(world.map.get_spawn_points())
+        
         while True:
             if args.sync:
                 sim_world.tick()
@@ -183,12 +178,12 @@ def game_loop(args):
                         world.agentManager.agent.set_destination(destination)
                         world.hud.notification("The target has been reached, resetting vehicle position", seconds=4.0)
                         print("The target has been reached, resetting vehicle position")
-                
                     elif world.modelManager.isOverrideSpeed:
                         world.agentManager.set_agentRandomDestination(world.map.get_spawn_points())
                         world.hud.notification("The target has been reached, resetting vehicle position to random point", seconds=4.0)
                         print("The target has been reached, resetting vehicle position")
                     else:
+                        # world.agentManager.set_agentRandomDestination(world.map.get_spawn_points())
                         world.hud.notification("The target has been reached, stopping the simulation", seconds=4.0)
                         print("The target has been reached, stopping the simulation")
                         break

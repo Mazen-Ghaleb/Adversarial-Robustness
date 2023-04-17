@@ -73,6 +73,7 @@ class World(object):
         self._actor_generation = args.generation
         self._gamma = args.gamma
         self.restart(initial_spawn_point)
+        # self.restart(carla.Transform(random.choice(self.map.get_spawn_points()).location, carla.Rotation(yaw=90)))
         self.world.on_tick(hud.on_world_tick)
         self.recording_enabled = False
         self.recording_start = 0

@@ -7,6 +7,9 @@ __pycache__
 # Jupyter Notebook
 **/.ipynb_checkpoints
 
+# Output Images 
+**/out/**
+
 # Test Images
 **/test_imgs
 
@@ -16,6 +19,7 @@ __pycache__
 
 #data and model
 model/datasets/**
+
 # model/YOLOX
 *.pth
 *.pt 

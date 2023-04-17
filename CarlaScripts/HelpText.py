@@ -96,7 +96,8 @@ Model controls
     SHIFT + E    : toggle Defense Sign detection method
     F            : switch Attack method
     SHIFT + F    : switch Defense method
+    SHIFT + O    : toggle recording of view of Speed-limit Sign detection
     O            : to save current view of Speed-limit Sign detection
     J            : to save classified view of Speed-limit Sign detection
-    
+
     """

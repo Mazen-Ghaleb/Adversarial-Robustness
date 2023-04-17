@@ -7,6 +7,7 @@
 # -- Imports -------------------------------------------------------------------
 # ==============================================================================
 import matplotlib.image
+import os
 from timeit import default_timer as timer   
 
 try:
@@ -43,6 +44,7 @@ class ModelManager(object):
         self.decouple_flag = False
         self.modelPicture_flag = False
         self.modelClassificationPicture_flag = False
+        self.modelRecord_flag = False
 
         self.detector = None
         self.isOverrideSpeed = False
@@ -72,14 +74,17 @@ class ModelManager(object):
         self.defense_model_image_window = False
         
     def toggle_modelWindow(self):
+        "Toggle the model image window"
         self.model_image_window = not self.model_image_window
         self.window_first_stats[0] = True
     
     def toggle_attackWindow(self):
+        "Toggle the attack model image window"
         self.attack_model_image_window = not self.attack_model_image_window
         self.window_first_stats[1] = True
         
     def toggle_defenseWindow(self):
+        "Toggle the defense model image window"
         self.defense_model_image_window = not self.defense_model_image_window
         self.window_first_stats[2] = True
         
@@ -101,7 +106,15 @@ class ModelManager(object):
     def set_decouple_flag(self, flag:bool):  # True to activate decoupling (Run only one model at a time)
         self.decouple_flag = flag
     
+    def set_modelPicture_flag(self, flag:bool):  # True to capture model pictures before classifications
+        self.modelPicture_flag = flag
+    
+    def set_modelRecord_flag(self, flag:bool):  # True to record all future model pictures before classifications
+        self.modelRecord_flag = flag
+    
     def empty_model_results(self):
+        "Empty the model results"
+        
         # Empty Classification Results
         self.model_result = None
         self.model_speed = None
@@ -128,6 +141,7 @@ class ModelManager(object):
         return array
 
     def drawBoundingBox(self, boxes, image: np.ndarray, classifications, confidences, color =(255, 165, 0), font = cv2.FONT_HERSHEY_SIMPLEX, thickness = 2):
+        """Draws the bounding boxes on the image and returns the image"""
         for box,classification,confidence in zip(boxes,classifications,confidences):
             detected_image = cv2.rectangle(image, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), color, thickness)
             detected_image = cv2.putText(detected_image, "{}: {:.2f} %".format(int(classification), confidence*100), 
@@ -135,6 +149,7 @@ class ModelManager(object):
         return detected_image
 
     def calculate_model(self, image, hud: HUD, agentManager):
+        """Calculates the model and updates the HUD"""
         total_start = timer()
         if (self.model_currentTick == 0):  # Performs the calculation every self.model_tickRate ticks
             image = self.to_bgr_array(image)
@@ -142,9 +157,12 @@ class ModelManager(object):
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             
             if self.modelPicture_flag:
-                matplotlib.image.imsave('../out/test.png', image)
+                matplotlib.image.imsave(self.next_path('../out/modelCapture/output-%s.png'), image)
                 hud.notification("Saved current view of Speed-limit Sign detection")
                 self.modelPicture_flag = False
+            
+            if self.modelRecord_flag:
+                matplotlib.image.imsave(self.next_path('../out/carlaDomain/output-%s.png'), image)
 
             if (self.decouple_flag):
 
@@ -184,6 +202,7 @@ class ModelManager(object):
         self.model_currentTick = (self.model_currentTick+1) %self.model_tickRate
 
     def calculate_classification(self, hud, image):
+        """Calculates the classification model and updates the HUD"""
         detection_start = timer()
         self.model_result = self.detector.run_without_attack(debug=True)
 
@@ -206,6 +225,7 @@ class ModelManager(object):
             print("{:<25}".format("Classification Model time"),": {:.3f}s No Sign Detected".format(timer()-detection_start))
 
     def calculate_attack(self, image):
+        """Calculates the attack model and updates the HUD"""
         attack_start = timer()
         self.attack_model_result = self.detector.run_with_attack(self.attack_methods[self.attack_currentMethodIndex])
         
@@ -225,6 +245,7 @@ class ModelManager(object):
             ": {:.3f}s No Sign Detected".format(timer()-attack_start))
 
     def calculate_defense(self, image, attack_method = "None", generate_attack = True):
+        """Calculates the defense model and updates the HUD"""
         defense_start = timer()
         self.defense_model_result = self.detector.run_with_defense(self.defense_methods[self.defense_currentMethodIndex],
                                                                     attack_method, generate_attack)
@@ -245,6 +266,7 @@ class ModelManager(object):
             ": {:.3f}s No Sign Detected".format(timer()-defense_start))
 
     def calculate_overrideSpeed(self, agentManager:AgentManager, detectedSpeed):
+        """Overrides the speed of the agent if the model has detected a speed limit sign"""
         if self.isOverrideSpeed:
             if detectedSpeed:
                 print("{:<25}".format("Overriding the speed with"),": {:.3f} km/h".format(detectedSpeed))
@@ -253,4 +275,22 @@ class ModelManager(object):
                 agentManager.agent.set_target_speed(detectedSpeed)
                             
     def getEmptyImage(self):
+        """Returns an empty image of the same size as the camera image"""
         return np.zeros((600, 800, 3), dtype = np.uint8)
+    
+    def next_path(self, path_pattern):
+        """Finds the next free path in an sequentially named list of files."""
+        i = 1
+
+        # First do an exponential search
+        while os.path.exists(path_pattern % i):
+            i = i * 2
+
+        # Result lies somewhere in the interval (i/2..i]
+        # This interval (a..b] and narrow it down until a + 1 = b
+        a, b = (i // 2, i)
+        while a + 1 < b:
+            c = (a + b) // 2 # interval midpoint
+            a, b = (c, b) if os.path.exists(path_pattern % c) else (a, c)
+
+        return path_pattern % b

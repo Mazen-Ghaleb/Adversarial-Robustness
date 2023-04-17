@@ -35,7 +35,7 @@ class AgentManager(object):
             self.agent = BehaviorAgent(player, behavior= self.agentBehavior)
             
         self.agent.ignore_traffic_lights(True)
-        self.agent.set_target_speed(15)
+        self.agent.set_target_speed(20)
         
     def toggle_agentStatus(self):
             self.agentStatus = not self.agentStatus
