@@ -26,6 +26,7 @@ except ImportError:
 from HUD import HUD
 from AgentManager import AgentManager
 
+
 # ==============================================================================
 # -- ModelManager --------------------------------------------------------------
 # ==============================================================================
@@ -179,7 +180,7 @@ class ModelManager(object):
                     self.calculate_classification(hud, np.array(image, copy=True))
                     self.calculate_overrideSpeed(agentManager, self.model_speed)
 
-                print("{:<25}".format("Total Model time"),": {:.3f}s".format(timer()-total_start))
+                print("{:<38}".format("Total Model time"),": {:.3f}s".format(timer()-total_start))
                 
             else:
                 self.calculate_classification(hud, np.array(image, copy=True))
@@ -197,7 +198,7 @@ class ModelManager(object):
                 else:
                     self.calculate_overrideSpeed(agentManager, self.model_speed)
 
-                print("{:<25}".format("Total Model time"),": {:.3f}s".format(timer()-total_start))
+                print("{:<38}".format("Total Model time"),": {:.3f}s".format(timer()-total_start))
             
         self.model_currentTick = (self.model_currentTick+1) %self.model_tickRate
 
@@ -216,32 +217,43 @@ class ModelManager(object):
                 hud.notification("Saved classified view of Speed-limit Sign detection")
                 self.modelClassificationPicture_flag = False
 
-            print("{:<25}".format("Classification Model time"),": {:.3f}s".format(timer()-detection_start),
+            # Print Classification Model time
+            print("{:<38}".format("Classification Model time"),": {:.3f}s".format(self.model_result[3]))
+
+            # Print Classification Model Process time
+            print("{:<38}".format("Classification Model Process time"),": {:.3f}s".format(timer()-detection_start),
             "Label:{:<3} Confidence:{:.3f}".format(int(self.model_speed), self.model_confidence))
         else:
             self.model_speed = None
             self.model_confidence = None
             self.model_image = self.getEmptyImage()
-            print("{:<25}".format("Classification Model time"),": {:.3f}s No Sign Detected".format(timer()-detection_start))
+            print("{:<38}".format("Classification Model Process time"),": {:.3f}s No Sign Detected".format(timer()-detection_start))
 
     def calculate_attack(self, image):
         """Calculates the attack model and updates the HUD"""
         attack_start = timer()
         self.attack_model_result = self.detector.run_with_attack(self.attack_methods[self.attack_currentMethodIndex])
-        
+
         if self.attack_model_result is not None:
             self.attack_model_speed = self.attack_model_result[0][0]
             self.attack_model_confidence = self.attack_model_result[1][0]
             self.attack_model_image = self.drawBoundingBox(self.attack_model_result[2], image, self.attack_model_result[0], self.attack_model_result[1])
             
-            print("{:<25}".format("{} Attack Model time".format(self.attack_methods[self.attack_currentMethodIndex])),
+            # Print Attack Model Classification time
+            print("{:<38}".format("{} Attack Model Classification time".format(self.attack_methods[self.attack_currentMethodIndex])),
+            ": {:.3f}s".format(self.attack_model_result[3]))
+            
+            # Print Attack Model Process time
+            print("{:<38}".format("{} Attack Model Process time".format(self.attack_methods[self.attack_currentMethodIndex])),
             ": {:.3f}s".format(timer()-attack_start),
             "Label:{:<3} Confidence:{:.3f}".format(int(self.attack_model_speed), self.attack_model_confidence))
         else:
             self.attack_model_speed = None
             self.attack_model_confidence = None
             self.attack_model_image = self.getEmptyImage()
-            print("{:<25}".format("{} Attack Model time".format(self.attack_methods[self.attack_currentMethodIndex])),
+            
+            # Print Attack Model Process time
+            print("{:<38}".format("{} Attack Model Process time".format(self.attack_methods[self.attack_currentMethodIndex])),
             ": {:.3f}s No Sign Detected".format(timer()-attack_start))
 
     def calculate_defense(self, image, attack_method = "None", generate_attack = True):
@@ -255,23 +267,28 @@ class ModelManager(object):
             self.defense_model_confidence = self.defense_model_result[1][0]
             self.defense_model_image = self.drawBoundingBox(self.defense_model_result[2], image, self.defense_model_result[0], self.defense_model_result[1])
             
-            print("{:<25}".format("{} Defense Model time".format(self.defense_methods[self.defense_currentMethodIndex])),
+            # Print Defense Model Classification time
+            print("{:<38}".format("{} Defense Model time".format(self.defense_methods[self.defense_currentMethodIndex])),
+            ": {:.3f}s".format(self.defense_model_result[3]))
+            
+            # Print Defense Model Process time
+            print("{:<38}".format("{} Defense Model Process time".format(self.defense_methods[self.defense_currentMethodIndex])),
             ": {:.3f}s".format(timer()-defense_start),
             "Label:{:<3} Confidence:{:.3f}".format(int(self.defense_model_speed), self.defense_model_confidence))
         else:
             self.defense_model_speed = None
             self.defense_model_confidence = None
             self.defense_model_image = self.getEmptyImage()
-            print("{:<25}".format("{} Defense Model time".format(self.defense_methods[self.defense_currentMethodIndex])),
+            
+            # Print Defense Model Process time
+            print("{:<38}".format("{} Defense Model Process time".format(self.defense_methods[self.defense_currentMethodIndex])),
             ": {:.3f}s No Sign Detected".format(timer()-defense_start))
 
     def calculate_overrideSpeed(self, agentManager:AgentManager, detectedSpeed):
         """Overrides the speed of the agent if the model has detected a speed limit sign"""
         if self.isOverrideSpeed:
             if detectedSpeed:
-                print("{:<25}".format("Overriding the speed with"),": {:.3f} km/h".format(detectedSpeed))
-                # Over 3.6 to convert it from km/h to m/s because constant velocity takes it in m/s
-                #SpeedOfOverride = detectedSpeed /3.6
+                print("{:<38}".format("Overriding the speed with"),": {:.3f} km/h".format(detectedSpeed))
                 agentManager.agent.set_target_speed(detectedSpeed)
                             
     def getEmptyImage(self):

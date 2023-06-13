@@ -13,6 +13,9 @@ __pycache__
 # Test Images
 **/test_imgs
 
+# Test Notebook
+**/CarlaNotebooks/
+
 # pycharm and vscode stuff
 .idea
 .vscode

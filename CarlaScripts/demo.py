@@ -11,6 +11,7 @@ import numpy as np
 from model.sign_classifier import classifier_loss, classifier_target_generator
 from model.custom_yolo import yolox_loss, yolox_target_generator
 from defense.hgd_trainer import get_HGD_model
+from timeit import default_timer as timer
 
 class Demo:
     def __init__(self) -> None:
@@ -55,6 +56,7 @@ class Demo:
         self.preprocessed_image = self.detector.preprocess(image)
 
     def run_without_attack(self, debug=False):
+        start = timer()
         images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
         detection_output = self.detector.get_model_output(images)[0]
         detection_output = self.detector.decode_model_output(detection_output)
@@ -69,8 +71,9 @@ class Demo:
         cropped_signs, detection_boxes = self.__crop_signs(detection_boxes)
         cropped_signs = torch.from_numpy(cropped_signs).float().to(self.device)
         classification_labels, classification_conf =  self.classifier.classify_signs(cropped_signs)
+        total_time = timer() - start
 
-        return self.__sort_labels(self.classes[classification_labels], classification_conf, detection_boxes)
+        return self.__sort_labels(self.classes[classification_labels], classification_conf, detection_boxes) + (total_time,)
     
     def run_with_attack(self, attack_type, debug=False):
 
@@ -82,10 +85,12 @@ class Demo:
         attack.loss = yolox_loss
         attack.target_generator = yolox_target_generator
         perturbed_images = attack.generate_attack(images)
+        start = timer()
         self.detector_attacked_images = perturbed_images
 
         detection_output = self.detector.get_model_output(perturbed_images)[0]
         detection_output = self.detector.decode_model_output(detection_output)
+        total_time = timer() - start
 
         if detection_output is None:
             return None
@@ -101,38 +106,46 @@ class Demo:
         attack.target_generator = classifier_target_generator
         perturbed_cropped_signs = attack.generate_attack(cropped_signs)
 
+        start = timer()
         classification_labels, classification_conf =  self.classifier.classify_signs(perturbed_cropped_signs)
-        return self.__sort_labels(self.classes[classification_labels], classification_conf, detection_boxes)
+        total_time += timer() - start
+        return self.__sort_labels(self.classes[classification_labels], classification_conf, detection_boxes) + (total_time,)
 
     def run_with_defense(self, defense_type, attack_type = "None", generate_attack = True):
         defense_model = self.defenses[defense_type]
         defense_model.eval()
 
-        images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
-
         if attack_type == "None":
+            images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
+            start = timer()
             with torch.no_grad():
                 denoised_images = images - defense_model(images)
+                
         elif generate_attack:
+            images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
             attack: AttackBase = self.attacks[attack_type]
             attack.model = self.detector.model
             attack.loss = yolox_loss
             attack.target_generator = yolox_target_generator
             perturbed_images = attack.generate_attack(images)
+            start = timer()
             with torch.no_grad():
                 denoised_images = perturbed_images - defense_model(perturbed_images)
+        
         elif not generate_attack:
+            start = timer()
             with torch.no_grad():
                 denoised_images = self.detector_attacked_images - defense_model(self.detector_attacked_images)
 
         detection_output = self.detector.get_model_output(denoised_images)[0]
         detection_output = self.detector.decode_model_output(detection_output)
+        total_time = timer() - start
         
         if detection_output is None:
             return None
         else:
             # classification_labels, classification_conf, detection_boxes =  detection_output
-            return detection_output
+            return detection_output + (total_time,)
 
 if __name__ == "__main__":
     import os

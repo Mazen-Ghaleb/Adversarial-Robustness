@@ -181,6 +181,8 @@ class KeyboardControl(object):
                         world.modelManager.set_model_flag(True, world.vehicle_camera, world.hud, world.agentManager)
                         world.hud.notification(
                             "Speed-limit Sign detection enabled")
+                    if (world.modelManager.decouple_flag):
+                        world.modelManager.empty_model_results()
                 elif event.key == K_e and pygame.key.get_mods() & KMOD_SHIFT:
                     if (world.modelManager.model_flag):
                         if (world.modelManager.defense_model_flag):
@@ -190,6 +192,8 @@ class KeyboardControl(object):
                         else:
                             world.modelManager.set_defense_model_flag(True)
                             world.hud.notification("{} Defense Sign detection enabled".format(world.modelManager.defense_methods[world.modelManager.defense_currentMethodIndex]))
+                        if (world.modelManager.decouple_flag):
+                            world.modelManager.empty_model_results()
                     else:
                         world.hud.notification(
                             "Can't enable Defense Sign detection while Sign detection is disabled")
@@ -202,6 +206,8 @@ class KeyboardControl(object):
                         else:
                             world.modelManager.set_attack_model_flag(True)
                             world.hud.notification("{} Attack Sign detection enabled".format(world.modelManager.attack_methods[world.modelManager.attack_currentMethodIndex]))
+                        if (world.modelManager.decouple_flag):
+                            world.modelManager.empty_model_results()
                     else:
                         world.hud.notification(
                             "Can't enable Attack Sign detection while Sign detection is disabled")
