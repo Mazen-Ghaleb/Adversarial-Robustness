@@ -12,6 +12,7 @@
 import glob
 import os
 import sys
+import math
 from carlaPath import carlaPath
 
 try:
@@ -145,6 +146,10 @@ def game_loop(args):
 
             world.tick(clock)
             world.render(display)
+            v = world.player.get_velocity()
+            v_magnitude = 3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2)
+            
+            display_number(display, '% 15.0f km/h' % (v_magnitude))
             pygame.display.flip()
             
             if(world.modelManager.model_image_window):
@@ -206,6 +211,22 @@ def game_loop(args):
         pygame.quit()
         cv2.destroyAllWindows()
 
+
+def display_number(display, number):
+    font = pygame.font.Font(pygame.font.get_default_font(), 36)
+    
+    # Render the number
+    text = font.render(str(number), True, (255, 165, 0))
+
+    # Get the dimensions of the rendered number
+    text_rect = text.get_rect()
+
+    # Set the position of the rendered number (bottom center of the screen)
+    text_rect.centerx = display.get_rect().centerx - 60
+    text_rect.bottom = display.get_rect().bottom - 20
+
+    # Blit the number onto the screen
+    display.blit(text, text_rect)
 
 # ==============================================================================
 # -- main() --------------------------------------------------------------------
