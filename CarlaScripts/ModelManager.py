@@ -74,6 +74,8 @@ class ModelManager(object):
         self.defense_model_image = self.getEmptyImage()
         self.defense_model_image_window = False
         
+        self.detectedSpeed = 30
+        
     def toggle_modelWindow(self):
         "Toggle the model image window"
         self.model_image_window = not self.model_image_window
@@ -205,7 +207,7 @@ class ModelManager(object):
     def calculate_classification(self, hud, image):
         """Calculates the classification model and updates the HUD"""
         detection_start = timer()
-        self.model_result = self.detector.run_without_attack(debug=True)
+        self.model_result = self.detector.run_without_attack()
 
         if self.model_result is not None:
             self.model_speed = self.model_result[0][0]
@@ -286,6 +288,7 @@ class ModelManager(object):
 
     def calculate_overrideSpeed(self, agentManager:AgentManager, detectedSpeed):
         """Overrides the speed of the agent if the model has detected a speed limit sign"""
+        self.detectedSpeed = detectedSpeed
         if self.isOverrideSpeed:
             if detectedSpeed:
                 print("{:<38}".format("Overriding the speed with"),": {:.3f} km/h".format(detectedSpeed))

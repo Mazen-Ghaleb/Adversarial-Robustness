@@ -30,13 +30,16 @@ class AgentManager(object):
                 self.agentStatus = True
             
         if self.agentMode == "Basic":
+            # self.agent = BasicAgent(player, opt_dict={"target_speed": 30, "ignore_traffic_lights": True, "ignore_stop_signs": True, "sampling_resolution": 1.0})
             self.agent = BasicAgent(player)
         else:
             self.agent = BehaviorAgent(player, behavior= self.agentBehavior)
             
+        self.agent.set_target_speed(30)
         self.agent.ignore_traffic_lights(True)
-        self.agent.set_target_speed(20)
-        
+        self.agent.ignore_stop_signs(True)
+        self.agent._sampling_resolution = 1.0
+            
     def toggle_agentStatus(self):
             self.agentStatus = not self.agentStatus
 

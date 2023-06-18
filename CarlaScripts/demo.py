@@ -16,7 +16,7 @@ from timeit import default_timer as timer
 class Demo:
     def __init__(self) -> None:
         if torch.cuda.is_available():
-            print("Running on cuda")
+            print("Running on CUDA")
             self.device = torch.device("cuda")
         else:
             print("Running on CPU")

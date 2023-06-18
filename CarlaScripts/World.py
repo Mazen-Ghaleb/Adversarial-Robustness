@@ -24,7 +24,8 @@ from IMUSensor import IMUSensor
 from RadarSensor import RadarSensor
 from CameraManager import CameraManager
 
-initial_spawn_point = carla.Transform(carla.Location(x=396.4, y=67.2, z=2), carla.Rotation(yaw=270)) 
+# initial_spawn_point = carla.Transform(carla.Location(x=396.4, y=67.2, z=2), carla.Rotation(yaw=270)) # Town01
+initial_spawn_point = carla.Transform(carla.Location(x=-13.6, y=5.8, z=11), carla.Rotation(yaw=180)) # Town04
 
 # ==============================================================================
 # -- World ---------------------------------------------------------------------
@@ -73,7 +74,7 @@ class World(object):
         self._actor_generation = args.generation
         self._gamma = args.gamma
         self.restart(initial_spawn_point)
-        # self.restart(carla.Transform(random.choice(self.map.get_spawn_points()).location, carla.Rotation(yaw=90)))
+        # self.restart(carla.Transform(random.choice(self.map.get_spawn_points()).location, carla.Rotation(yaw=90))) # Random spawn point
         self.world.on_tick(hud.on_world_tick)
         self.recording_enabled = False
         self.recording_start = 0
@@ -166,6 +167,10 @@ class World(object):
             
         self.agentManager.create_agent(self.player)
         
+        if self.modelManager.model_flag:
+            self.vehicle_camera.stop()
+            self.modelManager.set_model_flag(True, self.vehicle_camera, self.hud, self.agentManager)
+        
     def next_weather(self, reverse=False):
         """Get next weather setting"""
         self._weather_index += -1 if reverse else 1
@@ -227,6 +232,7 @@ class World(object):
         if self.radar_sensor is not None:
             self.toggle_radar()
         sensors = [
+            self.vehicle_camera,
             self.camera_manager.sensor,
             self.collision_sensor.sensor,
             self.lane_invasion_sensor.sensor,
@@ -234,7 +240,8 @@ class World(object):
             self.imu_sensor.sensor]
         for sensor in sensors:
             if sensor is not None:
-                sensor.stop()
+                if sensor.is_listening:
+                    sensor.stop()
                 sensor.destroy()
         if self.player is not None:
             self.player.destroy()
