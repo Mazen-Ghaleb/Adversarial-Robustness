@@ -299,7 +299,6 @@ def get_color(value, vmin, vmax):
 # -- main() --------------------------------------------------------------------
 # ==============================================================================
 
-
 def main():
     argparser = argparse.ArgumentParser(
         description='CARLA Manual Control Client')

@@ -207,7 +207,7 @@ class ModelManager(object):
     def calculate_classification(self, hud, image):
         """Calculates the classification model and updates the HUD"""
         detection_start = timer()
-        self.model_result = self.detector.run_without_attack()
+        self.model_result = self.detector.run_without_attack(debug=True)
 
         if self.model_result is not None:
             self.model_speed = self.model_result[0][0]

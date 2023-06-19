@@ -60,6 +60,7 @@ class Demo:
         images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
         detection_output = self.detector.get_model_output(images)[0]
         detection_output = self.detector.decode_model_output(detection_output)
+        total_time = timer() - start
 
         if detection_output is None:
             return None
@@ -67,13 +68,7 @@ class Demo:
         detection_label, detection_conf, detection_boxes = detection_output
         if debug:
             print(detection_label, detection_conf)
-
-        cropped_signs, detection_boxes = self.__crop_signs(detection_boxes)
-        cropped_signs = torch.from_numpy(cropped_signs).float().to(self.device)
-        classification_labels, classification_conf =  self.classifier.classify_signs(cropped_signs)
-        total_time = timer() - start
-
-        return self.__sort_labels(self.classes[classification_labels], classification_conf, detection_boxes) + (total_time,)
+        return self.__sort_labels(detection_label, detection_conf, detection_boxes) + (total_time,)
     
     def run_with_attack(self, attack_type, debug=False):
 
@@ -97,19 +92,8 @@ class Demo:
         detection_label, detection_conf, detection_boxes = detection_output
         if debug:
             print(detection_label, detection_conf)
-
-        cropped_signs, detection_boxes = self.__crop_signs(detection_boxes)
-        cropped_signs = torch.from_numpy(cropped_signs).float().to(self.device)
-
-        attack.model = self.classifier.model
-        attack.loss = classifier_loss
-        attack.target_generator = classifier_target_generator
-        perturbed_cropped_signs = attack.generate_attack(cropped_signs)
-
-        start = timer()
-        classification_labels, classification_conf =  self.classifier.classify_signs(perturbed_cropped_signs)
-        total_time += timer() - start
-        return self.__sort_labels(self.classes[classification_labels], classification_conf, detection_boxes) + (total_time,)
+        
+        return self.__sort_labels(detection_label, detection_conf, detection_boxes) + (total_time,)
 
     def run_with_defense(self, defense_type, attack_type = "None", generate_attack = True):
         defense_model = self.defenses[defense_type]
