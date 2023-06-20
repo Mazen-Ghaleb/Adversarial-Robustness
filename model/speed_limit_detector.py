@@ -7,10 +7,10 @@ from typing import Union
 
 
 def get_model(device):
-    # get the relative path of the current script to the working directory
+    # Get the relative path of the current script to the working directory
     dir_relative_path = os.path.relpath(
         os.path.dirname(__file__), os.getcwd())
-    # get the path of the model and the expirement script
+    # Get the path of the model and the expirement script
     model_path = os.path.join(dir_relative_path, "best_ckpt.pth")
     exp_path = os.path.join(dir_relative_path, "speedlimit_exp.py")
     model = yolox_custom(model_path, exp_path, device)
@@ -173,19 +173,11 @@ class SpeedLimitDetector:
 
             boxes_xyxy /= self.ratio
             dets = self.multiclass_nms(
-                boxes_xyxy, scores, nms_thr=0.45, score_thr=0.1)
+                boxes_xyxy, scores, nms_thr=0.45, score_thr=confidence_threshold)
             if dets is not None:
                 final_boxes, final_scores, final_cls_inds = dets[:,
                                                                 :4], dets[:, 4], dets[:, 5]
-                new_labels = []
-                new_confidences = []
-                new_bboxes = []
-                for label, confidence, bbox in zip(final_cls_inds, final_scores, final_boxes):
-                    if confidence >= confidence_threshold:
-                        new_labels.append(label)
-                        new_confidences.append(confidence)
-                        new_bboxes.append(bbox)
-                return self.classes[np.asarray(new_labels, dtype=np.uint8)],new_confidences, new_bboxes
+                return self.classes[np.asarray(final_cls_inds, dtype=np.uint8)], final_scores, final_boxes
             return None
     
     def detect_sign(self, image):

@@ -26,7 +26,6 @@ except ImportError:
 from HUD import HUD
 from AgentManager import AgentManager
 
-
 # ==============================================================================
 # -- ModelManager --------------------------------------------------------------
 # ==============================================================================
@@ -36,7 +35,7 @@ class ModelManager(object):
 
     def __init__(self):
         self.model_currentTick = 0
-        self.model_tickRate = 20
+        self.model_tickRate = 5
         self.window_first_stats = [True, True, True]
 
         self.model_flag = False

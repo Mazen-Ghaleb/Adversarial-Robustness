@@ -14,7 +14,7 @@ from defense.hgd_trainer import get_HGD_model
 from timeit import default_timer as timer
 
 class Demo:
-    def __init__(self,confidence_threshold=0.8) -> None:
+    def __init__(self, confidence_threshold=0.8) -> None:
         if torch.cuda.is_available():
             print("Running on CUDA")
             self.device = torch.device("cuda")
