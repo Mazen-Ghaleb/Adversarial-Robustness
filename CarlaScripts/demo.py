@@ -56,7 +56,7 @@ class Demo:
         images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
 
         attack.model = self.detector.model
-        attack.loss = yolox_loss
+        perturbed_images = attack.generate_attack(images)
         start = timer()
         self.detector_attacked_images = perturbed_images
 
