@@ -30,11 +30,6 @@ class SpeedLimitDetector:
         else:
             padded_img = np.ones(input_size, dtype=np.uint8) * 114
 
-        """TODO::
-        this gives correct bounding box  only for images with the same size 
-        if you want to use images with different size you must return the ratio for each image 
-        and pass it to the output decoder to get the correct box
-        """
         self.ratio = min(input_size[0] / img.shape[0],
                          input_size[1] / img.shape[1])
         resized_img = cv2.resize(
@@ -165,7 +160,7 @@ class SpeedLimitDetector:
             output = self.model(inputs).cpu().numpy()
         return output
 
-    def decode_model_output(self, model_output):
+    def decode_model_output(self, model_output, confidence_threshold=0.8):
             predictions = self.postprocess(model_output, [640, 640])
             boxes = predictions[:, :4]
             scores = predictions[:, 4:5] * predictions[:, 5:]
@@ -182,13 +177,15 @@ class SpeedLimitDetector:
             if dets is not None:
                 final_boxes, final_scores, final_cls_inds = dets[:,
                                                                 :4], dets[:, 4], dets[:, 5]
-                cls_ind = int(final_cls_inds[0])
-                score = final_scores[0]
-                # TODO: uncomment this XD
-                # if score > 0.9:
-                #     print(float(CLASSES[cls_ind])) # else:
-                #     print(-1.0)
-                return self.classes[np.asarray(final_cls_inds, dtype=np.uint8)],final_scores, final_boxes
+                new_labels = []
+                new_confidences = []
+                new_bboxes = []
+                for label, confidence, bbox in zip(final_cls_inds, final_scores, final_boxes):
+                    if confidence >= confidence_threshold:
+                        new_labels.append(label)
+                        new_confidences.append(confidence)
+                        new_bboxes.append(bbox)
+                return self.classes[np.asarray(new_labels, dtype=np.uint8)],new_confidences, new_bboxes
             return None
     
     def detect_sign(self, image):

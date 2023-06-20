@@ -14,13 +14,15 @@ from defense.hgd_trainer import get_HGD_model
 from timeit import default_timer as timer
 
 class Demo:
-    def __init__(self) -> None:
+    def __init__(self,confidence_threshold=0.8) -> None:
         if torch.cuda.is_available():
             print("Running on CUDA")
             self.device = torch.device("cuda")
         else:
             print("Running on CPU")
             self.device = torch.device("cpu")
+
+        self.confidence_threshold = confidence_threshold
         self.detector = SpeedLimitDetector(self.device)
         self.classifier = SignClassifier(self.device)
         self.classes = np.array([100, 120, 20, 30, 40, 15, 50, 60, 70, 80])
@@ -59,7 +61,7 @@ class Demo:
         start = timer()
         images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
         detection_output = self.detector.get_model_output(images)[0]
-        detection_output = self.detector.decode_model_output(detection_output)
+        detection_output = self.detector.decode_model_output(detection_output, self.confidence_threshold)
         total_time = timer() - start
 
         if detection_output is None:
@@ -84,7 +86,7 @@ class Demo:
         self.detector_attacked_images = perturbed_images
 
         detection_output = self.detector.get_model_output(perturbed_images)[0]
-        detection_output = self.detector.decode_model_output(detection_output)
+        detection_output = self.detector.decode_model_output(detection_output, self.confidence_threshold)
         total_time = timer() - start
 
         if detection_output is None:
@@ -122,7 +124,7 @@ class Demo:
                 denoised_images = self.detector_attacked_images - defense_model(self.detector_attacked_images)
 
         detection_output = self.detector.get_model_output(denoised_images)[0]
-        detection_output = self.detector.decode_model_output(detection_output)
+        detection_output = self.detector.decode_model_output(detection_output, self.confidence_threshold)
         total_time = timer() - start
         
         if detection_output is None:
