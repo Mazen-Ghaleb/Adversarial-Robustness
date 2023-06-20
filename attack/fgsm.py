@@ -4,8 +4,8 @@ import torch
 from typing import Callable
 
 class FGSM(AttackBase):
-    def __init__(self) -> None:
-        super(FGSM, self).__init__()
+    def __init__(self, target_generator, loss) -> None:
+        super(FGSM, self).__init__(target_generator, loss)
 
     def generate_attack(self, images, targets=None, eps=4, return_numpy=False):
         super().generate_attack(images, targets, eps, return_numpy)

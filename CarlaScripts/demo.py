@@ -1,7 +1,6 @@
 from model.speed_limit_detector import SpeedLimitDetector
 
 from attack.attack_base import AttackBase
-from attack.pgd import PGD
 from attack.iterative_fgsm import ItFGSM
 from attack.fgsm import FGSM
 
@@ -22,8 +21,8 @@ class Demo:
 
         self.confidence_threshold = confidence_threshold
         self.detector = SpeedLimitDetector(self.device)
-        self.classes = np.array([100, 120, 20, 30, 40, 15, 50, 60, 70, 80])
-        self.attacks = {"FGSM": FGSM(), "IT-FGSM": ItFGSM(), "PGD": PGD()}
+        self.attacks = {"FGSM": FGSM(yolox_target_generator, yolox_loss),
+                        "IT-FGSM": ItFGSM(yolox_target_generator, yolox_loss)}
         self.defenses = {"HGD": get_HGD_model(self.device)}
 
     def __sort_labels(self, cls_labels, cls_confs, detection_boxes):
@@ -58,8 +57,6 @@ class Demo:
 
         attack.model = self.detector.model
         attack.loss = yolox_loss
-        attack.target_generator = yolox_target_generator
-        perturbed_images = attack.generate_attack(images)
         start = timer()
         self.detector_attacked_images = perturbed_images
 
@@ -89,8 +86,6 @@ class Demo:
             images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
             attack: AttackBase = self.attacks[attack_type]
             attack.model = self.detector.model
-            attack.loss = yolox_loss
-            attack.target_generator = yolox_target_generator
             perturbed_images = attack.generate_attack(images)
             start = timer()
             with torch.no_grad():
@@ -125,7 +120,6 @@ if __name__ == "__main__":
     # output = demo.run_with_defense("HGD","FGSM")
     # print(output[0], output[1], output[2])
     print("with attack: ")
-    output = demo.run_with_attack("PGD", debug=True)
     print(output[0], output[1], output[2])
 
     # output = demo.run_with_attack("FGSM")
