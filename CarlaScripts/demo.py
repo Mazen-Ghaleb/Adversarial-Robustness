@@ -1,5 +1,4 @@
 from model.speed_limit_detector import SpeedLimitDetector
-from model.sign_classifier import SignClassifier
 
 from attack.attack_base import AttackBase
 from attack.pgd import PGD
@@ -8,7 +7,6 @@ from attack.fgsm import FGSM
 
 import torch
 import numpy as np
-from model.sign_classifier import classifier_loss, classifier_target_generator
 from model.custom_yolo import yolox_loss, yolox_target_generator
 from defense.hgd_trainer import get_HGD_model
 from timeit import default_timer as timer
@@ -32,25 +30,6 @@ class Demo:
     def __sort_labels(self, cls_labels, cls_confs, detection_boxes):
         sorted_indexes = np.argsort(cls_confs)[::-1]
         return cls_labels[sorted_indexes], cls_confs[sorted_indexes], detection_boxes[sorted_indexes]
-
-    def __crop_signs(self, detection_boxes):
-        delete_masks = []
-        cropped_signs = []
-        for i, box in enumerate(np.array(detection_boxes, dtype=np.int32)):
-            if np.any(box < 0, axis=None):
-                delete_masks.append(i)
-                continue
-            xmin, ymin, xmax, ymax = box
-            cropped_sign = self.image[ymin: ymax, xmin:xmax, :]
-            if cropped_sign.size == 0:
-                delete_masks.append(i)
-                continue
-            cropped_sign = self.classifier.preprocess(cropped_sign)
-            cropped_signs.append(cropped_sign)
-        
-        cropped_signs = np.asarray(cropped_signs)
-        detection_boxes = np.delete(detection_boxes, delete_masks, axis=0)
-        return cropped_signs, detection_boxes
 
     
     def preprocess(self, image:np.ndarray):
