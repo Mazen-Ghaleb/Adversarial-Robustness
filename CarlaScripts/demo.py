@@ -22,7 +22,6 @@ class Demo:
 
         self.confidence_threshold = confidence_threshold
         self.detector = SpeedLimitDetector(self.device)
-        self.classifier = SignClassifier(self.device)
         self.classes = np.array([100, 120, 20, 30, 40, 15, 50, 60, 70, 80])
         self.attacks = {"FGSM": FGSM(), "IT-FGSM": ItFGSM(), "PGD": PGD()}
         self.defenses = {"HGD": get_HGD_model(self.device)}
