@@ -9,8 +9,6 @@ import shutil
 import h5py
 import hdf5plugin
 
-
-
 @torch.no_grad()
 def dump_split_features(model, data_loader,split, datasets_path):
     with h5py.File(os.path.join(datasets_path, 'model_features', f'{split}.h5'),

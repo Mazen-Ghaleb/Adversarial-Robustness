@@ -11,7 +11,7 @@ from defense.hgd_trainer import get_HGD_model
 from timeit import default_timer as timer
 
 class AdversarialFramework:
-    def __init__(self, confidence_threshold=0.8) -> None:
+    def __init__(self, confidence_threshold=0.8, model_name="best_ckpt") -> None:
         if torch.cuda.is_available():
             print("Running on CUDA")
             self.device = torch.device("cuda")
@@ -20,10 +20,14 @@ class AdversarialFramework:
             self.device = torch.device("cpu")
 
         self.confidence_threshold = confidence_threshold
-        self.detector = SpeedLimitDetector(self.device)
+        self.detector = SpeedLimitDetector(self.device, model_name + ".pth")
         self.attacks = {"FGSM": FGSM(yolox_target_generator, yolox_loss, self.detector.model),
                         "IT-FGSM": ItFGSM(yolox_target_generator, yolox_loss, self.detector.model)}
-        self.defenses = {"HGD": get_HGD_model(self.device, width=0.5, growth_rate=16, bn_size=2)}
+        
+        if (model_name == "mix_ckpt"):
+            self.defenses = {"HGD": get_HGD_model(self.device, width=0.5, growth_rate=16, bn_size=2, checkpoint_name= model_name + ".pt")}
+        else:
+            self.defenses = {"HGD": get_HGD_model(self.device, checkpoint_name= model_name + ".pt")}
 
     def __sort_labels(self, cls_labels, cls_confs, detection_boxes):
         sorted_indexes = np.argsort(cls_confs)[::-1]
@@ -55,9 +59,9 @@ class AdversarialFramework:
         images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
 
         perturbed_images = attack.generate_attack(images)
-        start = timer()
         self.detector_attacked_images = perturbed_images
-
+        
+        start = timer()
         detection_output = self.detector.get_model_output(perturbed_images)[0]
         detection_output = self.detector.decode_model_output(detection_output, self.confidence_threshold)
         total_time = timer() - start

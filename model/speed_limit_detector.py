@@ -4,20 +4,21 @@ import cv2
 import numpy as np
 import os
 
-def get_model(device):
+def get_model(device, model_name= "best_ckpt.pth"):
     # Get the relative path of the current script to the working directory
     dir_relative_path = os.path.relpath(
         os.path.dirname(__file__), os.getcwd())
+    
     # Get the path of the model and the expirement script
-    model_path = os.path.join(dir_relative_path, "best_ckpt.pth")
+    model_path = os.path.join(dir_relative_path, model_name)
     exp_path = os.path.join(dir_relative_path, "speedlimit_exp.py")
     model = yolox_custom(model_path, exp_path, device)
     return model
 
 class SpeedLimitDetector:
-    def __init__(self, device) -> None:
+    def __init__(self, device, model_name) -> None:
         self.device = device
-        self.model = get_model(device)
+        self.model = get_model(device, model_name)
         self.classes = np.array([100, 120, 20, 30, 40, 15, 50, 60, 70, 80])
 
     def preprocess(self, img, input_size=[640, 640], swap=(2, 0, 1)):

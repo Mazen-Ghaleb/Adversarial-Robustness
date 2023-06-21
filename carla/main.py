@@ -109,8 +109,10 @@ def game_loop(args):
             sign.destroy()
         
         if (world.modelManager.detector is None):
-            world.modelManager.detector = AdversarialFramework(confidence_threshold= 0.8)
-            
+            # world.modelManager.detector = AdversarialFramework(confidence_threshold= 0.8, model_name= "real_ckpt")
+            # world.modelManager.detector = AdversarialFramework(confidence_threshold= 0.8, model_name= "carla_ckpt")
+            world.modelManager.detector = AdversarialFramework(confidence_threshold= 0.8, model_name= "mix_ckpt")
+    
             world.modelManager.attack_methods.append(("FGSM"))
             world.modelManager.attack_methods.append(("IT-FGSM"))
             world.modelManager.defense_methods.append(("HGD"))

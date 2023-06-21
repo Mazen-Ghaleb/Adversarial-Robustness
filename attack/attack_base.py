@@ -3,7 +3,6 @@ import numpy as np
 from torch.nn import Module
 from typing import Callable
 
-
 class AttackBase(ABC):
     def __init__(self, target_generator, loss, model) -> None:
         self.__target_generator = target_generator
@@ -43,8 +42,6 @@ class AttackBase(ABC):
         assert not isinstance(value, type(Callable)), f"target_generator must be of type{type(Callable)} "
         self.__target_generator = value
     
-
-
     def generate_attack(
             self,
             images,

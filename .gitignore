@@ -27,6 +27,15 @@ model/datasets/**
 *.pth
 *.pt 
 
+# Model files
+! **/real_ckpt.pth
+! **/carla_ckpt.pth
+! **/mix_ckpt.pth
+
+! **/real_ckpt.pt
+! **/carla_ckpt.pt 
+! **/mix_ckpt.pt
+
 #runs
 **/runs/
 
