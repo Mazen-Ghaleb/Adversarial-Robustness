@@ -1,10 +1,15 @@
+"""
+    Implemented HGD as demonstrated in the following paper
+    https://openaccess.thecvf.com/content_cvpr_2018/html/Liao_Defense_Against_Adversarial_CVPR_2018_paper.html
+    with modifications to the architecture as demonstrated in the following paper
+    https://doi.org/10.48550/arXiv.1608.06993
+"""
+
 from torch.nn import Module, BatchNorm2d, ReLU, Conv2d, Sequential, ConvTranspose2d, Dropout2d
-from torch.nn import ModuleDict, AvgPool2d
+from torch.nn import ModuleDict
 import torch.nn.functional as F
 from torch import Tensor
-from collections import OrderedDict
 import torch
-
 
 class DenseLayer(Module):
     def __init__(self, num_input_features, growth_rate, bn_size) -> None:
@@ -71,7 +76,6 @@ class Transition(Sequential):
         self.add_module('conv', Conv2d(num_input_features, num_output_features,
                                        kernel_size=kernel_size, stride=stride,padding=1,bias=False))
         self.add_module('dropout', Dropout2d(p=0.1,inplace=True))
-        # self.add_module('pool', Conv2d(kernel_size=2, stride=2))
 
 class Fuse(Module):
     def __init__(self) -> None:
@@ -86,8 +90,8 @@ class HGD(Module):
     def __init__(
             self,
             width = 1.0,
-            growth_rate=16,
-            bn_size=2,
+            growth_rate=32,
+            bn_size=4,
             ) -> None:
         
         super(HGD, self).__init__()
@@ -105,7 +109,6 @@ class HGD(Module):
             Dropout2d(p=0.1,inplace=True)
         )
 
-
         self.reverse_stem = Sequential(
             BatchNorm2d(start_channels),
             ReLU(inplace=True),
@@ -120,7 +123,6 @@ class HGD(Module):
         
 
         self.fuse = Fuse()
-
         self.conv = Conv2d(in_channels=start_channels, out_channels=3, kernel_size=3, padding=1, stride=1)
 
         forward_path_info={
@@ -133,7 +135,6 @@ class HGD(Module):
             "layers_inputs": list(map(lambda x: int(x * width),  [512, 512, 384, 192])),
             "layers_outputs": list(map(lambda x: int(x * width), [256, 256, 128, 64]))
         }
-
 
         for i, (num_layers, inp, out) in enumerate(
             zip(forward_path_info["num_layers"],
@@ -179,7 +180,7 @@ class HGD(Module):
             self.add_module(f"backward_transition_{i}", transition)
             
     def forward(self, input):
-        #backward path
+        # Backward path
         stem_out = self.stem(input)
         # print(stem_out.shape)
         out_forward = []
@@ -190,7 +191,6 @@ class HGD(Module):
         out_forward.append(self.forward_transition_4(self.forward_4(out_forward[3])))
         # for out in out_forward: 
         #     print(out.shape)
-
 
         out_backward = self.fuse(out_forward[4], out_forward[3])
         # print(out_backward.shape)
@@ -214,16 +214,9 @@ class HGD(Module):
         out_backward = self.reverse_stem(out_backward)
         out_backward = self.conv(out_backward)
 
-
         return out_backward
 
-
-
-
-
-
 if __name__ == "__main__":
-    from torchsummary import summary
     model = HGD(width=0.5)
     input = torch.randn((1, 3, 640, 640))
     def count_parameters(model):

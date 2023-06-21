@@ -18,10 +18,7 @@ from yolox.models import IOUloss
 from defense.high_level_guided_denoiser import HGD
 import pandas as pd
 from torch.utils.tensorboard import SummaryWriter
-"""
-    implementation for high-level representation guided denoiser from
-    https://openaccess.thecvf.com/content_cvpr_2018/html/Liao_Defense_Against_Adversarial_CVPR_2018_paper.html
-"""
+
 class COCODataset(data.Dataset):
     def __init__(
             self,
@@ -382,16 +379,15 @@ class Trainer:
             if self.early_stopper.early_stop(val_losses['total_loss']):
                 break
 
-
 """TODO::
  load the sched and optimizer states for train resume
  separate the loading for training and loading for inference into two functions
 """
-def get_HGD_model(device, checkpoint_name='best_ckpt.pt'):
+def get_HGD_model(device, checkpoint_name='best_ckpt.pt', width=1.0, growth_rate=32, bn_size=4):
     dir_relative_path = os.path.relpath(os.path.dirname(__file__), os.getcwd())
-    # get the path of the model and the expirement script
+    # Get the path of the model and the expirement script
     model_path = os.path.join(dir_relative_path, checkpoint_name)
-    model = HGD(width=1.0, growth_rate=32, bn_size=4)
+    model = HGD(width=width, growth_rate=growth_rate, bn_size=bn_size)
     # model.load_state_dict(torch.load(model_path)['model_state_dict'])
     model.load_state_dict(torch.load(model_path, device)['model_dict'])
     return model.to(device)
@@ -415,8 +411,6 @@ if __name__ == "__main__":
     attacked_images_path = os.path.join(
         os.path.dirname(os.getcwd()),'model','datasets','attacked_images')
 
-    
-        
     annotations_path = os.getcwd() #os.path.join(dataset_path,'annotations')
     train_dataset = COCODataset(
         os.path.join(dataset_path,'train2017'),

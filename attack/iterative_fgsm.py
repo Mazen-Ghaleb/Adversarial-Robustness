@@ -5,10 +5,10 @@ from torch.nn import Module
 from typing import Callable
 
 class ItFGSM(AttackBase):
-    def __init__(self, target_generator, loss) -> None:
-        super(ItFGSM, self).__init__(target_generator, loss)
+    def __init__(self, target_generator, loss, model) -> None:
+        super(ItFGSM, self).__init__(target_generator, loss, model)
 
-    def generate_attack(self,images:Tensor, targets=None,eps:int=4, return_numpy=False):
+    def generate_attack(self, images:Tensor, targets=None, eps:int=4, return_numpy=False):
         super().generate_attack(images, targets, eps, return_numpy)
         images.requires_grad = True
 

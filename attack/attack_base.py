@@ -5,9 +5,10 @@ from typing import Callable
 
 
 class AttackBase(ABC):
-    def __init__(self, target_generator, loss) -> None:
+    def __init__(self, target_generator, loss, model) -> None:
         self.__target_generator = target_generator
         self.__loss = loss
+        self.__model = model
         pass
 
     def __disable_weights_grad(self):

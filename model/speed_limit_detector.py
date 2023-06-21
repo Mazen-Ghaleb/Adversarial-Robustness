@@ -3,8 +3,6 @@ from .YOLOX import yolox_custom
 import cv2
 import numpy as np
 import os
-from typing import Union
-
 
 def get_model(device):
     # Get the relative path of the current script to the working directory
@@ -15,7 +13,6 @@ def get_model(device):
     exp_path = os.path.join(dir_relative_path, "speedlimit_exp.py")
     model = yolox_custom(model_path, exp_path, device)
     return model
-
 
 class SpeedLimitDetector:
     def __init__(self, device) -> None:

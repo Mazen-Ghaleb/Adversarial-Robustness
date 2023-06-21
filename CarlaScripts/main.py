@@ -23,7 +23,6 @@ try:
 except IndexError:
     pass
 
-
 # ==============================================================================
 # -- Imports -------------------------------------------------------------------
 # ==============================================================================
@@ -107,7 +106,7 @@ def game_loop(args):
             sign.destroy()
         
         if (world.modelManager.detector is None):
-            world.modelManager.detector = Demo()
+            world.modelManager.detector = Demo(confidence_threshold= 0.8)
             
             world.modelManager.attack_methods.append(("FGSM"))
             world.modelManager.attack_methods.append(("IT-FGSM"))

@@ -21,8 +21,8 @@ class Demo:
 
         self.confidence_threshold = confidence_threshold
         self.detector = SpeedLimitDetector(self.device)
-        self.attacks = {"FGSM": FGSM(yolox_target_generator, yolox_loss),
-                        "IT-FGSM": ItFGSM(yolox_target_generator, yolox_loss)}
+        self.attacks = {"FGSM": FGSM(yolox_target_generator, yolox_loss, self.detector.model),
+                        "IT-FGSM": ItFGSM(yolox_target_generator, yolox_loss, self.detector.model)}
         self.defenses = {"HGD": get_HGD_model(self.device)}
 
     def __sort_labels(self, cls_labels, cls_confs, detection_boxes):
@@ -55,7 +55,6 @@ class Demo:
 
         images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
 
-        attack.model = self.detector.model
         perturbed_images = attack.generate_attack(images)
         start = timer()
         self.detector_attacked_images = perturbed_images
@@ -85,7 +84,6 @@ class Demo:
         elif generate_attack:
             images = torch.from_numpy(self.preprocessed_image[None, :, :, :]).to(self.device)
             attack: AttackBase = self.attacks[attack_type]
-            attack.model = self.detector.model
             perturbed_images = attack.generate_attack(images)
             start = timer()
             with torch.no_grad():
