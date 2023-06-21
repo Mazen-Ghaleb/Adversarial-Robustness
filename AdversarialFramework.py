@@ -10,7 +10,7 @@ from model.custom_yolo import yolox_loss, yolox_target_generator
 from defense.hgd_trainer import get_HGD_model
 from timeit import default_timer as timer
 
-class Demo:
+class AdversarialFramework:
     def __init__(self, confidence_threshold=0.8) -> None:
         if torch.cuda.is_available():
             print("Running on CUDA")
@@ -23,13 +23,12 @@ class Demo:
         self.detector = SpeedLimitDetector(self.device)
         self.attacks = {"FGSM": FGSM(yolox_target_generator, yolox_loss, self.detector.model),
                         "IT-FGSM": ItFGSM(yolox_target_generator, yolox_loss, self.detector.model)}
-        self.defenses = {"HGD": get_HGD_model(self.device)}
+        self.defenses = {"HGD": get_HGD_model(self.device, width=0.5, growth_rate=16, bn_size=2)}
 
     def __sort_labels(self, cls_labels, cls_confs, detection_boxes):
         sorted_indexes = np.argsort(cls_confs)[::-1]
         return cls_labels[sorted_indexes], cls_confs[sorted_indexes], detection_boxes[sorted_indexes]
 
-    
     def preprocess(self, image:np.ndarray):
         self.image = image
         self.preprocessed_image = self.detector.preprocess(image)
@@ -110,21 +109,21 @@ if __name__ == "__main__":
     test_imgs_path = os.path.join(os.path.dirname(__file__), "../test_imgs")
     test_imgs_path = os.path.relpath(test_imgs_path, os.getcwd())
     img = cv2.imread(os.path.join(test_imgs_path, "test6.png"))
-    demo = Demo()
-    demo.preprocess(img)
-    output = demo.run_without_attack(debug=True)
+    adversarial_framework = AdversarialFramework()
+    adversarial_framework.preprocess(img)
+    output = adversarial_framework.run_without_attack(debug=True)
     print("without attack: ")
     print(output[0], output[1], output[2])
-    # output = demo.run_with_defense("HGD","FGSM")
+    # output = adversarial_framework.run_with_defense("HGD","FGSM")
     # print(output[0], output[1], output[2])
     print("with attack: ")
     print(output[0], output[1], output[2])
 
-    # output = demo.run_with_attack("FGSM")
+    # output = adversarial_framework.run_with_attack("FGSM")
     # print("with fgsm attack: ")
     # print(output[0], output[1], output[2])
 
-    # output = demo.run_with_attack("IT-FGSM")
+    # output = adversarial_framework.run_with_attack("IT-FGSM")
     # print("with it-fgsm attack: ")
     # print(f"labels: \n{output[0]}")
     # print(f"conf: \n{output[1]}")

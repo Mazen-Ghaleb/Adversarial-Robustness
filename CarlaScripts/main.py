@@ -55,7 +55,9 @@ from World import initial_spawn_point
 # Class imports
 from KeyboardControl import KeyboardControl
 from World import World
-from demo import Demo
+
+sys.path.append('../')
+from AdversarialFramework import AdversarialFramework
 
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
@@ -69,7 +71,7 @@ def game_loop(args):
 
     try:
         client = carla.Client(args.host, args.port)
-        client.set_timeout(30.0)
+        client.set_timeout(60.0)
 
         #sim_world = client.get_world()
         sim_world = client.load_world('Town04_Opt')
@@ -106,7 +108,7 @@ def game_loop(args):
             sign.destroy()
         
         if (world.modelManager.detector is None):
-            world.modelManager.detector = Demo(confidence_threshold= 0.8)
+            world.modelManager.detector = AdversarialFramework(confidence_threshold= 0.8)
             
             world.modelManager.attack_methods.append(("FGSM"))
             world.modelManager.attack_methods.append(("IT-FGSM"))

@@ -4,7 +4,6 @@
     with modifications to the architecture as demonstrated in the following paper
     https://doi.org/10.48550/arXiv.1608.06993
 """
-
 from torch.nn import Module, BatchNorm2d, ReLU, Conv2d, Sequential, ConvTranspose2d, Dropout2d
 from torch.nn import ModuleDict
 import torch.nn.functional as F
@@ -224,6 +223,3 @@ if __name__ == "__main__":
     print(count_parameters(model))
 
     print(model(input).shape)
-
-
-
