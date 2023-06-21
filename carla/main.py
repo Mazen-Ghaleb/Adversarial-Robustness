@@ -74,6 +74,7 @@ def game_loop(args):
         client.set_timeout(60.0)
 
         #sim_world = client.get_world()
+        # sim_world = client.load_world('Town01_Opt')
         sim_world = client.load_world('Town04_Opt')
 
         if args.sync:
