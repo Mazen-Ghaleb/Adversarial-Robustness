@@ -118,7 +118,7 @@ def game_loop(args):
             world.modelManager.defense_methods.append(("HGD"))
             
             # Initial cache of function
-            world.modelManager.detector.preprocess(cv2.imread("../out/sample.png"))
+            world.modelManager.detector.preprocess(cv2.imread("cache-img.png"))
             temp_cache = world.modelManager.detector.run_without_attack()
             
             # Initial cache of function
