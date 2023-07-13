@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-# Copyright (c) 2023 Mazen Mostafa Ghaleb, Mostafa Lotfy Mostafa, Safia Medhat Abdulaziz, Youssef Maher Nader
+# Copyright (c) 2019 Computer Vision Center (CVC) at the Universitat Autonoma de Barcelona (UAB).
 #
 # This work is licensed under the terms of the MIT license.
-# For a copy, see https://opensource.org/licenses/MIT.
+# For a copy, see <https://opensource.org/licenses/MIT>.
 
 # ==============================================================================
 # -- Find CARLA Module ---------------------------------------------------------

@@ -1,8 +1,3 @@
-# Copyright (c) 2023 Mazen Mostafa Ghaleb, Mostafa Lotfy Mostafa, Safia Medhat Abdulaziz, Youssef Maher Nader
-#
-# This work is licensed under the terms of the MIT license.
-# For a copy, see https://opensource.org/licenses/MIT.
-
 # ==============================================================================
 # -- Imports -------------------------------------------------------------------
 # ==============================================================================
